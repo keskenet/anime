@@ -1,44 +1,150 @@
 <!DOCTYPE html>
 <html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Аніме Світ</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inknut+Antiqua:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="splash-screen">
-        <h1>Аніме Світ</h1>
-        <p>Завантаження вашого епічного пригодницького світу...</p>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inknut+Antiqua:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="splash-screen" class="splash-screen">
+      <h1>Аніме Світ</h1>
+      <p>Завантаження вашого епічного пригодницького світу...</p>
     </div>
 
     <header class="main-content">
-        <div class="image-column">
-            <img src="https://i.ibb.co/4nKmKSzW/photo-2025-05-22-19-21-29.jpg"/>
+      <h1 class="site-logo">
+        <img src="https://i.ibb.co/4nKmKSzW/photo-2025-05-22-19-21-29.jpg" alt="Аніме Світ лого" />
+      </h1>
+      
+      <nav class="menu">
+        <a href="#home" class="menu-item active" data-section="home">
+          <i class="fas fa-home menu-icon"></i>
+          <span class="menu-text">ГОЛОВНА</span>
+        </a>
+        
+        <a href="#new" class="menu-item" data-section="new">
+          <i class="fas fa-star menu-icon"></i>
+          <span class="menu-text">НОВИНКИ</span>
+        </a>
+        
+        <div class="search-container">
+          <input type="text" id="searchInput" placeholder="Пошук аніме..." class="search-input">
+          <i class="fas fa-search search-icon"></i>
+          <div id="searchResults" class="search-results"></div>
         </div>
-        <nav class="menu">
-            <div class="frame-2">
-                <div class="text-2">ГОЛОВНА</div>
-                <img class="icon-2" src="https://cdn-icons-png.flaticon.com/512/25/25694.png" alt="Головна" />
-            </div>
-            <div class="frame-3">
-                <img class="icon-3" src="https://cdn-icons-png.flaticon.com/512/98/98929.png" alt="Новинки" />
-                <div class="text-3">НОВИНКИ</div>
-            </div>
-            <div class="frame-4">
-                <div class="text-4">ПОШУК</div>
-                <img class="icon-4" src="https://cdn-icons-png.flaticon.com/512/163/163073.png" alt="Пошук" />
-            </div>
-            <div class="frame-5">
-                <div class="text-5">КАБІНЕТ</div>
-                <img class="icon-5" src="https://cdn-icons-png.flaticon.com/512/666/666201.png" alt="Кабінет" />
-            </div>
-        </nav>
+        
+        <a href="#profile" class="menu-item">
+          <i class="fas fa-user menu-icon"></i>
+          <span class="menu-text">КАБІНЕТ</span>
+        </a>
+      </nav>
     </header>
 
+    <main class="content">
+      <section id="home" class="anime-lists section-content active">
+        <div class="list-section">
+          <div class="list-header">
+            <h2>Мій список аніме</h2>
+            <button id="addAnimeBtn" class="add-anime-btn">
+              <i class="fas fa-plus"></i>
+              Додати аніме
+            </button>
+          </div>
+          <div class="list-tabs">
+            <button class="tab-btn active" data-tab="watching">Дивлюсь</button>
+            <button class="tab-btn" data-tab="completed">Переглянуто</button>
+            <button class="tab-btn" data-tab="plan">Заплановано</button>
+          </div>
+          
+          <div class="anime-grid" id="animeList">
+            <!-- Anime cards will be populated by JavaScript -->
+          </div>
+        </div>
+      </section>
+
+      <section id="new" class="section-content">
+        <div class="new-releases">
+          <h2>Новинки аніме</h2>
+          <div class="season-selector">
+            <button class="season-btn active">Зима 2025</button>
+            <button class="season-btn">Весна 2025</button>
+            <button class="season-btn">Літо 2025</button>
+            <button class="season-btn">Осінь 2025</button>
+          </div>
+          <div class="anime-grid" id="newReleasesList">
+            <!-- New releases will be populated by JavaScript -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Add Anime Modal -->
+    <div id="addAnimeModal" class="modal">
+      <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Додати нове аніме</h2>
+        <form id="addAnimeForm">
+          <div class="form-group">
+            <label for="animeTitle">Назва аніме</label>
+            <input type="text" id="animeTitle" required>
+          </div>
+          <div class="form-group">
+            <label for="animeEpisodes">Кількість епізодів</label>
+            <input type="text" id="animeEpisodes" required>
+          </div>
+          <div class="form-group">
+            <label for="animeCover">Посилання на обкладинку</label>
+            <input type="url" id="animeCover" required>
+          </div>
+          <div class="form-group">
+            <label for="animeVideo">Посилання на відео</label>
+            <input type="url" id="animeVideo" required>
+          </div>
+          <div class="form-group">
+            <label for="animeStatus">Статус</label>
+            <select id="animeStatus" required>
+              <option value="watching">Дивлюсь</option>
+              <option value="completed">Переглянуто</option>
+              <option value="plan">Заплановано</option>
+            </select>
+          </div>
+          <button type="submit" class="submit-btn">Додати</button>
+        </form>
+      </div>
+    </div>
+
+    <template id="animeCardTemplate">
+      <div class="anime-card">
+        <div class="anime-cover">
+          <img src="" alt="">
+          <div class="anime-overlay">
+            <div class="rating">
+              <i class="far fa-star"></i>
+              <i class="far fa-star"></i>
+              <i class="far fa-star"></i>
+              <i class="far fa-star"></i>
+              <i class="far fa-star"></i>
+            </div>
+            <a href="#" class="watch-btn" target="_blank">
+              <i class="fas fa-play"></i> Дивитись
+            </a>
+          </div>
+        </div>
+        <div class="anime-info">
+          <h3 class="anime-title"></h3>
+          <p class="anime-episodes"></p>
+        </div>
+      </div>
+    </template>
+
     <script src="script.js"></script>
-</body>
+  </body>
 </html>
