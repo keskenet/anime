@@ -83,68 +83,205 @@ const newReleasesData = {
   ]
 };
 
-// Initialize anime data from localStorage or use default
-let animeData = JSON.parse(localStorage.getItem('animeData')) || defaultAnimeData;
-
-// Save anime data to localStorage
-function saveAnimeData() {
-  localStorage.setItem('animeData', JSON.stringify(animeData));
+// --- STORAGE API ---
+// Функції для роботи з localStorage
+async function getStorage() {
+  try {
+    const data = localStorage.getItem('animeWorldStorage');
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading storage:', error);
+  }
+  // Return default structure if storage can't be read or is empty
+  return {
+    animeData: { watching: [], completed: [], plan: [] },
+    users: {},
+    loggedInUser: null
+  };
 }
 
-// Additional anime data for search
-const allAnime = [
-  ...animeData.watching,
-  ...animeData.completed,
-  ...animeData.plan,
-  ...Object.values(newReleasesData).flat(),
-  {
-    title: "One Piece",
-    episodes: "1000+ епізодів",
-    cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-    rating: 0,
-    videoUrl: "https://example.com/watch/one-piece"
-  },
-  {
-    title: "Naruto Shippuden",
-    episodes: "500 епізодів",
-    cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-    rating: 0,
-    videoUrl: "https://example.com/watch/naruto"
-  },
-  {
-    title: "My Hero Academia",
-    episodes: "113 епізодів",
-    cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-    rating: 0,
-    videoUrl: "https://example.com/watch/my-hero-academia"
+async function saveStorage(data) {
+  try {
+    localStorage.setItem('animeWorldStorage', JSON.stringify(data));
+  } catch (error) {
+    console.error('Error saving storage:', error);
+    alert('Помилка збереження даних. Спробуйте пізніше.');
+    throw error;
   }
-];
+}
 
-// Delete anime function
-function deleteAnime(status, index) {
+// --- Глобальні змінні ---
+var animeData = { watching: [], completed: [], plan: [] };
+var users = {};
+var loggedInUser = null;
+
+// ДОДАТИ ініціалізацію profileSection
+const profileSection = document.getElementById('profile');
+
+// ДОДАТИ ініціалізацію authModal, authTabButtons, activateAuthTab
+const authModal = document.getElementById('authModal');
+const authTabButtons = document.querySelectorAll('.auth-tab-btn');
+function activateAuthTab(tabName) {
+  authTabButtons.forEach(button => {
+    if (button.dataset.authTab === tabName) {
+      button.classList.add('active');
+    } else {
+      button.classList.remove('active');
+    }
+  });
+  document.querySelectorAll('.auth-form').forEach(form => {
+    if (form.id.startsWith(tabName)) {
+      form.classList.add('active');
+    } else {
+      form.classList.remove('active');
+    }
+  });
+}
+
+// --- Завантаження та збереження всіх даних ---
+async function loadAllData() {
+  const storage = await getStorage();
+  animeData = storage.animeData || { watching: [], completed: [], plan: [] };
+  users = storage.users || {};
+  loggedInUser = storage.loggedInUser || null;
+}
+
+async function saveAllData() {
+  await saveStorage({ animeData, users, loggedInUser });
+}
+
+// --- Додавання, редагування, видалення аніме ---
+async function addOrEditAnime(newAnime, status, editMode, oldStatus, index) {
+  await loadAllData();
+  if (editMode) {
+    if (oldStatus === status) {
+      animeData[status][index] = newAnime;
+    } else {
+      animeData[oldStatus].splice(index, 1);
+      animeData[status].push(newAnime);
+    }
+  } else {
+    animeData[status].push(newAnime);
+  }
+  await saveAllData();
+}
+
+async function deleteAnime(status, index) {
+  await loadAllData();
   animeData[status].splice(index, 1);
-  saveAnimeData();
+  await saveAllData();
   loadAnimeList(status);
 }
 
-// Edit anime function
+// Функція для редагування аніме
 function editAnime(status, index) {
   const anime = animeData[status][index];
+  const form = document.getElementById('addAnimeForm');
   
-  // Fill form with anime data
+  // Заповнюємо форму даними аніме
   document.getElementById('animeTitle').value = anime.title;
   document.getElementById('animeEpisodes').value = anime.episodes;
   document.getElementById('animeCover').value = anime.cover;
   document.getElementById('animeVideo').value = anime.videoUrl;
   document.getElementById('animeStatus').value = status;
   
-  // Add edit mode data
-  addAnimeForm.dataset.editMode = 'true';
-  addAnimeForm.dataset.editStatus = status;
-  addAnimeForm.dataset.editIndex = index;
+  // Встановлюємо режим редагування
+  form.dataset.editMode = 'true';
+  form.dataset.editStatus = status;
+  form.dataset.editIndex = index;
   
-  // Show modal
-  modal.classList.add('active');
+  // Змінюємо текст кнопки
+  form.querySelector('button[type="submit"]').textContent = 'Зберегти зміни';
+  
+  // Відкриваємо модальне вікно
+  document.getElementById('addAnimeModal').classList.add('active');
+}
+
+// --- Додавання, реєстрація, вхід користувача ---
+async function registerUser(username, password) {
+  await loadAllData();
+  if (users[username]) return false;
+  users[username] = password;
+  await saveAllData();
+  return true;
+}
+
+async function loginUser(username, password) {
+  await loadAllData();
+  if (users[username] && users[username] === password) {
+    loggedInUser = username;
+    await saveAllData();
+    return true;
+  }
+  return false;
+}
+
+async function logoutUser() {
+  await loadAllData();
+  loggedInUser = null;
+  await saveAllData();
+}
+
+// --- Кабінет ---
+async function updateProfileSection() {
+  await loadAllData(); // Завантажуємо актуальні дані
+  profileSection.innerHTML = '';
+  if (loggedInUser) {
+    // Підраховуємо статистику користувача
+    const totalWatching = animeData.watching.length;
+    const totalCompleted = animeData.completed.length;
+    const totalPlanned = animeData.plan.length;
+    
+    profileSection.innerHTML = `
+      <div class="profile-content">
+        <h2>Вітаємо, ${loggedInUser}!</h2>
+        <div class="profile-stats">
+          <div class="stat-item">
+            <h3>Дивлюсь</h3>
+            <p>${totalWatching}</p>
+          </div>
+          <div class="stat-item">
+            <h3>Переглянуто</h3>
+            <p>${totalCompleted}</p>
+          </div>
+          <div class="stat-item">
+            <h3>Заплановано</h3>
+            <p>${totalPlanned}</p>
+          </div>
+        </div>
+        <button id="logoutBtn" class="submit-btn" style="background-color: #ff3333; width: auto; padding: 10px 20px; margin-top: 20px;">Вийти</button>
+      </div>
+    `;
+      const logoutButton = document.getElementById('logoutBtn');
+    if (logoutButton) {
+      // Видаляємо старі обробники подій перед додаванням нового
+      const newLogoutButton = logoutButton.cloneNode(true);
+      logoutButton.parentNode.replaceChild(newLogoutButton, logoutButton);
+      
+      newLogoutButton.addEventListener('click', async () => {
+        if (confirm('Ви впевнені, що хочете вийти?')) {
+          await logoutUser();
+          document.querySelector('.menu-item[data-section="home"]').click();
+          profileSection.innerHTML = '';
+          updateProfileSection();
+        }
+      });
+    }} else {
+    // Show a message prompting user to log in
+    profileSection.innerHTML = `
+      <div class="profile-content">
+        <h2>Ласкаво просимо!</h2>
+        <p style="text-align: center; margin: 20px 0;">Будь ласка, увійдіть або зареєструйтесь, щоб отримати доступ до свого кабінету.</p>
+        <button class="submit-btn" onclick="document.querySelector('.menu-item[data-section=profile]').click()">
+          Увійти / Зареєструватися
+        </button>
+      </div>
+    `;
+    authModal.classList.add('active');
+    activateAuthTab('login');
+  }
 }
 
 // Modal functionality
@@ -173,67 +310,77 @@ window.addEventListener('click', (e) => {
   }
 });
 
-addAnimeForm.addEventListener('submit', (e) => {
+// Функція для валідації URL
+function isValidUrl(urlString) {
+  try {
+    new URL(urlString);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// --- ОНОВИТИ додавання/редагування аніме ---
+addAnimeForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   
+  const coverUrl = document.getElementById('animeCover').value;
+  const videoUrl = document.getElementById('animeVideo').value;
+  const title = document.getElementById('animeTitle').value.trim();
+  const episodes = document.getElementById('animeEpisodes').value.trim();
+  
+  // Валідація даних
+  if (!title || !episodes) {
+    alert('Будь ласка, заповніть всі поля');
+    return;
+  }
+  
+  if (!isValidUrl(coverUrl) || !isValidUrl(videoUrl)) {
+    alert('Будь ласка, введіть коректні URL для обкладинки та відео');
+    return;
+  }
+  
   const newAnime = {
-    title: document.getElementById('animeTitle').value,
-    episodes: document.getElementById('animeEpisodes').value,
-    cover: document.getElementById('animeCover').value,
-    videoUrl: document.getElementById('animeVideo').value,
+    title,
+    episodes,
+    cover: coverUrl,
+    videoUrl,
     rating: 0
   };
   
   const status = document.getElementById('animeStatus').value;
+  const editMode = addAnimeForm.dataset.editMode === 'true';
+  const oldStatus = addAnimeForm.dataset.editStatus;
+  const index = parseInt(addAnimeForm.dataset.editIndex);
   
-  if (addAnimeForm.dataset.editMode === 'true') {
-    // Update existing anime
-    const oldStatus = addAnimeForm.dataset.editStatus;
-    const index = parseInt(addAnimeForm.dataset.editIndex);
-    
-    if (oldStatus === status) {
-      // Update in same status
-      animeData[status][index] = newAnime;
-    } else {
-      // Move to new status
-      animeData[oldStatus].splice(index, 1);
-      animeData[status].push(newAnime);
-    }
-  } else {
-    // Add new anime
-    animeData[status].push(newAnime);
+  try {
+    await addOrEditAnime(newAnime, status, editMode, oldStatus, index);
+    loadAnimeList(status);
+    addAnimeForm.reset();
+    delete addAnimeForm.dataset.editMode;
+    delete addAnimeForm.dataset.editStatus;
+    delete addAnimeForm.dataset.editIndex;
+    modal.classList.remove('active');
+  } catch (error) {
+    console.error('Помилка при збереженні аніме:', error);
+    alert('Сталася помилка при збереженні. Спробуйте пізніше.');
   }
-  
-  // Save changes
-  saveAnimeData();
-  
-  // Update display
-  loadAnimeList(status);
-  
-  // Reset form and close modal
-  addAnimeForm.reset();
-  delete addAnimeForm.dataset.editMode;
-  delete addAnimeForm.dataset.editStatus;
-  delete addAnimeForm.dataset.editIndex;
-  modal.classList.remove('active');
 });
 
 // Search functionality
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
 
-searchInput.addEventListener('input', (e) => {
+searchInput.addEventListener('input', async (e) => {
   const searchTerm = e.target.value.toLowerCase();
-  
   if (searchTerm.length < 2) {
     searchResults.classList.remove('active');
     return;
   }
-  
+  const allAnime = await getAllAnime();
   const filteredAnime = allAnime.filter(anime => 
     anime.title.toLowerCase().includes(searchTerm)
   );
-  
   displaySearchResults(filteredAnime);
 });
 
@@ -257,25 +404,19 @@ function displaySearchResults(results) {
       </div>
     `;
     
-    resultItem.addEventListener('click', () => {
-      // Find the anime in the lists
+    resultItem.addEventListener('click', async () => {
       let found = false;
+      await loadAllData();
       ['watching', 'completed', 'plan'].forEach(status => {
         const index = animeData[status].findIndex(a => a.title === anime.title);
         if (index !== -1) {
-          // Switch to the correct tab
           document.querySelector(`[data-tab="${status}"]`).click();
-          
-          // Find and highlight the anime card
           setTimeout(() => {
             const cards = document.querySelectorAll('.anime-card');
-            // Ensure cards[index] exists before trying to scroll/style
             if (cards[index]) {
               cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
               cards[index].style.transform = 'scale(1.05)';
               cards[index].style.boxShadow = '0 0 20px var(--accent-color)';
-              
-              // Remove highlight after 2 seconds
               setTimeout(() => {
                 cards[index].style.transform = '';
                 cards[index].style.boxShadow = '';
@@ -285,13 +426,9 @@ function displaySearchResults(results) {
           found = true;
         }
       });
-      
-      // If not found, show message
       if (!found) {
         alert('Це аніме ще не додано до вашого списку');
       }
-      
-      // Clear search
       searchResults.classList.remove('active');
       searchInput.value = '';
     });
@@ -319,9 +456,16 @@ document.querySelectorAll('.menu-item[data-section]').forEach(item => {
       menuItem.classList.remove('active');
     });
     item.classList.add('active');
-    
-    // Show corresponding section
+      // Show corresponding section
     const sectionId = item.getAttribute('data-section');
+    
+    // Перевірка для розділу "Кабінет"
+    if (sectionId === 'profile' && !loggedInUser) {
+      authModal.classList.add('active');
+      activateAuthTab('login');
+      return;
+    }
+    
     document.querySelectorAll('.section-content').forEach(section => {
       section.classList.remove('active');
     });
@@ -333,8 +477,7 @@ document.querySelectorAll('.menu-item[data-section]').forEach(item => {
     } else if (sectionId === 'new') {
       loadNewReleases('Зима 2025');
     } else if (sectionId === 'profile') {
-      // Спеціальна обробка для розділу "Кабінет"
-      updateProfileSection(); 
+      updateProfileSection();
     }
   });
 });
@@ -377,6 +520,14 @@ function loadNewReleases(season) {
     `;
     newReleasesList.appendChild(card);
   });
+}
+
+// Функція для перевірки статусу входу
+async function checkLoginStatusAndDisplayProfile() {
+  await loadAllData();
+  if (loggedInUser) {
+    document.querySelector('.menu-item[data-section="profile"]').click();
+  }
 }
 
 // Splash screen functionality
@@ -461,17 +612,15 @@ function createAnimeCard(anime, status, index) {
   
   // Add rating functionality
   stars.forEach((star, i) => {
-    star.addEventListener('click', () => {
+    star.addEventListener('click', async () => {
       const rating = i + 1;
       updateRating(stars, rating);
       anime.rating = rating;
-      saveAnimeData();
+      await saveAllData();
     });
-    
     star.addEventListener('mouseover', () => {
       updateRating(stars, i + 1, true);
     });
-    
     star.addEventListener('mouseout', () => {
       updateRating(stars, anime.rating);
     });
@@ -493,216 +642,269 @@ function updateRating(stars, rating, hover = false) {
   });
 }
 
+// --- ВИДАЛИТИ старі функції та дублікати ---
+// Видаляємо let animeData = JSON.parse(localStorage.getItem('animeData')) || defaultAnimeData;
+// Видаляємо function saveAnimeData() { ... }
+// Видаляємо стару функцію deleteAnime (яка не async)
+// Видаляємо стару функцію editAnime (яка не async)
+// Видаляємо стару функцію для ініціалізації даних аніме
+// Видаляємо старі обробники подій для кнопок редагування та видалення аніме
+// Видаляємо старі функції для роботи з localStorage
+// Видаляємо стару функцію getAllAnime (яка не async)
 
-// --- Логіка для реєстрації/входу (без Node.js, дані в localStorage) ---
-const authModal = document.getElementById('authModal');
-const authCloseModal = document.querySelector('.auth-close-modal');
-const authTabButtons = document.querySelectorAll('.auth-tab-btn');
-const authForms = document.querySelectorAll('.auth-form');
+// --- ОНОВИТИ додавання/редагування аніме ---
+addAnimeForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const coverUrl = document.getElementById('animeCover').value;
+  const videoUrl = document.getElementById('animeVideo').value;
+  const title = document.getElementById('animeTitle').value.trim();
+  const episodes = document.getElementById('animeEpisodes').value.trim();
+  
+  // Валідація даних
+  if (!title || !episodes) {
+    alert('Будь ласка, заповніть всі поля');
+    return;
+  }
+  
+  if (!isValidUrl(coverUrl) || !isValidUrl(videoUrl)) {
+    alert('Будь ласка, введіть коректні URL для обкладинки та відео');
+    return;
+  }
+  
+  const newAnime = {
+    title,
+    episodes,
+    cover: coverUrl,
+    videoUrl,
+    rating: 0
+  };
+  
+  const status = document.getElementById('animeStatus').value;
+  const editMode = addAnimeForm.dataset.editMode === 'true';
+  const oldStatus = addAnimeForm.dataset.editStatus;
+  const index = parseInt(addAnimeForm.dataset.editIndex);
+  
+  try {
+    await addOrEditAnime(newAnime, status, editMode, oldStatus, index);
+    loadAnimeList(status);
+    addAnimeForm.reset();
+    delete addAnimeForm.dataset.editMode;
+    delete addAnimeForm.dataset.editStatus;
+    delete addAnimeForm.dataset.editIndex;
+    modal.classList.remove('active');
+  } catch (error) {
+    console.error('Помилка при збереженні аніме:', error);
+    alert('Сталася помилка при збереженні. Спробуйте пізніше.');
+  }
+});
 
-const loginForm = document.getElementById('loginForm');
-const registerForm = document.getElementById('registerForm');
-const loginMessage = document.getElementById('loginMessage');
-const registerMessage = document.getElementById('registerMessage');
+// --- ОНОВИТИ рейтинг ---
 
-const profileSection = document.getElementById('profile'); // Отримуємо секцію "КАБІНЕТ"
-let loggedInUser = localStorage.getItem('loggedInUser'); // Змінна для зберігання імені увійшовшого користувача
-
-// Функція для отримання користувачів з localStorage
-function getUsers() {
-    const usersJson = localStorage.getItem('users');
-    return usersJson ? JSON.parse(usersJson) : {};
-}
-
-// Функція для збереження користувачів у localStorage
-function saveUsers(users) {
-    localStorage.setItem('users', JSON.stringify(users));
-}
-
-// Функція для відображення розділу "Кабінет" в залежності від статусу входу
-function updateProfileSection() {
-    profileSection.innerHTML = ''; // Очищаємо вміст секції
-    const currentUser = localStorage.getItem('loggedInUser'); // Отримуємо поточного увійшовшого користувача
-
-    if (currentUser) {
-        // Користувач увійшов
-        profileSection.innerHTML = `
-            <div class="profile-content">
-                <h2>Вітаємо, ${currentUser}!</h2>
-                <p>Це ваш особистий кабінет. Тут буде персоналізований контент.</p>
-                <button id="logoutBtn" class="submit-btn" style="background-color: #ff3333; width: auto; padding: 10px 20px;">Вийти</button>
-            </div>
-        `;
-        // Переконайтеся, що кнопка "Вийти" існує, перш ніж додавати слухача подій
-        const logoutButton = document.getElementById('logoutBtn');
-        if (logoutButton) {
-            logoutButton.addEventListener('click', logout);
-        }
-    } else {
-        // Користувач не увійшов
-        // Просто показуємо модальне вікно авторизації
-        authModal.classList.add('active');
-        activateAuthTab('login'); // Автоматично активуємо вкладку "Вхід"
-    }
-}
-
-// Функція для виходу користувача
-function logout() {
-    localStorage.removeItem('loggedInUser'); // Видаляємо статус входу
-    loggedInUser = null; // Оновлюємо змінну
-    alert('Ви успішно вийшли з облікового запису.');
-    updateProfileSection(); // Оновлюємо розділ "Кабінет"
+// --- ОНОВИТИ пошук ---
+function displaySearchResults(results) {
+  searchResults.innerHTML = '';
+  
+  if (results.length === 0) {
+    searchResults.innerHTML = '<div class="search-result-item">Нічого не знайдено</div>';
+    searchResults.classList.add('active');
+    return;
+  }
+  
+  results.forEach(anime => {
+    const resultItem = document.createElement('div');
+    resultItem.className = 'search-result-item';
+    resultItem.innerHTML = `
+      <img src="${anime.cover}" alt="${anime.title}">
+      <div>
+        <div>${anime.title}</div>
+        <small>${anime.episodes}</small>
+      </div>
+    `;
     
-    // Переходимо на головну сторінку, якщо це потрібно
-    document.querySelector('.menu-item[data-section="home"]').click(); 
+    resultItem.addEventListener('click', async () => {
+      let found = false;
+      await loadAllData();
+      ['watching', 'completed', 'plan'].forEach(status => {
+        const index = animeData[status].findIndex(a => a.title === anime.title);
+        if (index !== -1) {
+          document.querySelector(`[data-tab="${status}"]`).click();
+          setTimeout(() => {
+            const cards = document.querySelectorAll('.anime-card');
+            if (cards[index]) {
+              cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+              cards[index].style.transform = 'scale(1.05)';
+              cards[index].style.boxShadow = '0 0 20px var(--accent-color)';
+              setTimeout(() => {
+                cards[index].style.transform = '';
+                cards[index].style.boxShadow = '';
+              }, 2000);
+            }
+          }, 100);
+          found = true;
+        }
+      });
+      if (!found) {
+        alert('Це аніме ще не додано до вашого списку');
+      }
+      searchResults.classList.remove('active');
+      searchInput.value = '';
+    });
+    
+    searchResults.appendChild(resultItem);
+  });
+  
+  searchResults.classList.add('active');
 }
 
-
-// Обробка натискання на "КАБІНЕТ" 
-document.querySelector('.menu-item[data-section="profile"]').addEventListener('click', (e) => {
-    e.preventDefault();
-    // Активуємо пункт меню "КАБІНЕТ"
-    document.querySelectorAll('.menu-item').forEach(menuItem => {
-        menuItem.classList.remove('active');
-    });
-    e.currentTarget.classList.add('active');
-
-    // Показуємо секцію "Кабінет"
-    document.querySelectorAll('.section-content').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById('profile').classList.add('active');
-
-    // Оновлюємо вміст секції "Кабінет" (або показуємо модалку, якщо не увійшов)
-    updateProfileSection();
-});
-
-
-// Закриття модального вікна авторизації
-authCloseModal.addEventListener('click', () => {
-    authModal.classList.remove('active');
-    clearAuthMessages();
-});
-
-// Закриття модального вікна авторизації при кліку поза ним
-window.addEventListener('click', (e) => {
-    if (e.target === authModal) {
-        authModal.classList.remove('active');
-        clearAuthMessages();
+// --- ОНОВИТИ allAnime для пошуку ---
+async function getAllAnime() {
+  await loadAllData();
+  return [
+    ...animeData.watching,
+    ...animeData.completed,
+    ...animeData.plan,
+    ...Object.values(newReleasesData).flat(),
+    {
+      title: "One Piece",
+      episodes: "1000+ епізодів",
+      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      rating: 0,
+      videoUrl: "https://example.com/watch/one-piece"
+    },
+    {
+      title: "Naruto Shippuden",
+      episodes: "500 епізодів",
+      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      rating: 0,
+      videoUrl: "https://example.com/watch/naruto"
+    },
+    {
+      title: "My Hero Academia",
+      episodes: "113 епізодів",
+      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      rating: 0,
+      videoUrl: "https://example.com/watch/my-hero-academia"
     }
-});
+  ];
+}
 
-// Перемикання вкладок Вхід/Реєстрація
-authTabButtons.forEach(button => {
+// --- Utility functions for form state ---
+function setFormLoading(form, isLoading) {
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const inputs = form.querySelectorAll('input');
+  if (isLoading) {
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Зачекайте...';
+    submitBtn.disabled = true;
+    inputs.forEach(input => input.disabled = true);
+  } else {
+    submitBtn.innerHTML = form.id === 'loginForm' ? 'Увійти' : 'Зареєструватися';
+    submitBtn.disabled = false;
+    inputs.forEach(input => input.disabled = false);
+  }
+}
+
+// Ініціалізація форм авторизації при завантаженні сторінки
+document.addEventListener('DOMContentLoaded', () => {
+  // Форми
+  const registerForm = document.getElementById('registerForm');
+  const loginForm = document.getElementById('loginForm');
+  const authModal = document.getElementById('authModal');
+  const authTabButtons = document.querySelectorAll('.auth-tab-btn');
+  const closeAuthModalButton = document.querySelector('.close-auth-modal');
+
+  // Перемикання вкладок
+  authTabButtons.forEach(button => {
     button.addEventListener('click', () => {
-        const tab = button.dataset.authTab;
-        activateAuthTab(tab);
-        clearAuthMessages();
+      activateAuthTab(button.dataset.authTab);
     });
-});
+  });
 
-function activateAuthTab(tabName) {
-    authTabButtons.forEach(button => {
-        if (button.dataset.authTab === tabName) {
-            button.classList.add('active');
-        } else {
-            button.classList.remove('active');
-        }
+  // Закриття модального вікна
+  if (closeAuthModalButton) {
+    closeAuthModalButton.addEventListener('click', () => {
+      authModal.classList.remove('active');
     });
+  }
 
-    authForms.forEach(form => {
-        if (form.id.startsWith(tabName)) { // 'loginForm' for 'login', 'registerForm' for 'register'
-            form.classList.add('active');
-        } else {
-            form.classList.remove('active');
-        }
-    });
-}
+  // Закриття при кліку поза модальним вікном
+  window.addEventListener('click', (e) => {
+    if (e.target === authModal) {
+      authModal.classList.remove('active');
+    }
+  });
 
-function displayAuthMessage(element, message, type) {
-    element.textContent = message;
-    element.className = `auth-message ${type}`; // Add 'success' or 'error' class
-}
-
-function clearAuthMessages() {
-    loginMessage.textContent = '';
-    loginMessage.className = 'auth-message';
-    registerMessage.textContent = '';
-    registerMessage.className = 'auth-message';
-}
-
-
-// Обробка форми реєстрації
-registerForm.addEventListener('submit', async (e) => {
+  // Обробка форми реєстрації
+  registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    clearAuthMessages();
-
-    const username = document.getElementById('registerUsername').value;
-    const password = document.getElementById('registerPassword').value;
-
-    if (!username || !password) {
-        displayAuthMessage(registerMessage, 'Будь ласка, вкажіть ім\'я користувача та пароль.', 'error');
-        return;
-    }
-
-    let users = getUsers();
-
-    if (users[username]) {
-        displayAuthMessage(registerMessage, 'Користувач з таким ім\'ям вже існує.', 'error');
-        return;
-    }
-
-    // Зберігаємо пароль без хешування для простоти (НЕБЕЗПЕЧНО для реальних проектів!)
-    users[username] = password; 
-    saveUsers(users);
-
-    displayAuthMessage(registerMessage, 'Реєстрація успішна!', 'success');
+    setFormLoading(registerForm, true);
     
-    // Після успішної реєстрації можна автоматично переключити на вхід
-    setTimeout(() => {
-        activateAuthTab('login');
-        document.getElementById('loginUsername').value = username; // Заповнити логін
-        document.getElementById('loginPassword').value = ''; // Очистити пароль
-        clearAuthMessages();
-    }, 2000);
-});
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;    if (!username || !password) {
+      alert('Будь ласка, заповніть всі поля');
+      setFormLoading(registerForm, false);
+      return;
+    }
+    
+    if (password.length < 6) {
+      alert('Пароль повинен містити не менше 6 символів');
+      setFormLoading(registerForm, false);
+      return;
+    }
+    
+    if (!/^[a-zA-Z0-9]+$/.test(username)) {
+      alert('Ім\'я користувача може містити тільки літери та цифри');
+      setFormLoading(registerForm, false);
+      return;
+    }
 
-// Обробка форми входу
-loginForm.addEventListener('submit', async (e) => {
+    try {
+      const success = await registerUser(username, password);
+      if (success) {
+        alert('Реєстрація успішна! Тепер ви можете увійти.');
+        activateAuthTab('login');
+        registerForm.reset();
+      } else {
+        alert('Користувач з таким ім\'ям вже існує!');
+      }
+    } catch (error) {
+      console.error('Помилка реєстрації:', error);
+      alert('Сталася помилка під час реєстрації. Спробуйте пізніше.');
+    } finally {
+      setFormLoading(registerForm, false);
+    }
+  });
+
+  // Обробка форми входу
+  loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    clearAuthMessages();
+    setFormLoading(loginForm, true);
 
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
 
     if (!username || !password) {
-        displayAuthMessage(loginMessage, 'Будь ласка, вкажіть ім\'я користувача та пароль.', 'error');
-        return;
+      alert('Будь ласка, заповніть всі поля');
+      setFormLoading(loginForm, false);
+      return;
     }
 
-    let users = getUsers();
-
-    if (users[username] && users[username] === password) { // Перевірка пароля
-        displayAuthMessage(loginMessage, 'Вхід успішний!', 'success');
-        localStorage.setItem('loggedInUser', username); // Зберігаємо, що користувач увійшов
-        loggedInUser = username; // Оновлюємо змінну
-        
-        setTimeout(() => {
-            authModal.classList.remove('active'); // Закриваємо модалку після входу
-            updateProfileSection(); // Оновлюємо розділ "Кабінет" з новим статусом
-            document.getElementById('profile').classList.add('active'); // Показуємо секцію "Кабінет"
-            document.querySelector('.menu-item[data-section="profile"]').classList.add('active'); // Активуємо пункт меню
-        }, 1500);
-    } else {
-        displayAuthMessage(loginMessage, 'Неправильне ім\'я користувача або пароль.', 'error');
+    try {
+      const success = await loginUser(username, password);
+      if (success) {
+        alert('Вхід успішний!');
+        authModal.classList.remove('active');
+        document.querySelector('.menu-item[data-section="profile"]').click();
+        loginForm.reset();
+      } else {
+        alert('Невірне ім\'я користувача або пароль!');
+      }
+    } catch (error) {
+      console.error('Помилка входу:', error);
+      alert('Сталася помилка під час входу. Спробуйте пізніше.');
+    } finally {
+      setFormLoading(loginForm, false);
     }
+  });
 });
 
-// Додаємо функцію для перевірки статусу входу при завантаженні сторінки
-function checkLoginStatusAndDisplayProfile() {
-    loggedInUser = localStorage.getItem('loggedInUser'); // Отримуємо статус входу
-    // Ця функція просто оновлює змінну `loggedInUser`, 
-    // щоб інші частини коду знали поточний статус.
-    // Вона НЕ ВІДОБРАЖАЄ розділ "Кабінет" автоматично при завантаженні.
-    // Відображення відбувається при натисканні на пункт меню "КАБІНЕТ".
-}
