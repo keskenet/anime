@@ -269,15 +269,18 @@ function displaySearchResults(results) {
           // Find and highlight the anime card
           setTimeout(() => {
             const cards = document.querySelectorAll('.anime-card');
-            cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
-            cards[index].style.transform = 'scale(1.05)';
-            cards[index].style.boxShadow = '0 0 20px var(--accent-color)';
-            
-            // Remove highlight after 2 seconds
-            setTimeout(() => {
-              cards[index].style.transform = '';
-              cards[index].style.boxShadow = '';
-            }, 2000);
+            // Ensure cards[index] exists before trying to scroll/style
+            if (cards[index]) {
+              cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+              cards[index].style.transform = 'scale(1.05)';
+              cards[index].style.boxShadow = '0 0 20px var(--accent-color)';
+              
+              // Remove highlight after 2 seconds
+              setTimeout(() => {
+                cards[index].style.transform = '';
+                cards[index].style.boxShadow = '';
+              }, 2000);
+            }
           }, 100);
           found = true;
         }
@@ -329,6 +332,9 @@ document.querySelectorAll('.menu-item[data-section]').forEach(item => {
       loadAnimeList('watching');
     } else if (sectionId === 'new') {
       loadNewReleases('Зима 2025');
+    } else if (sectionId === 'profile') {
+      // Спеціальна обробка для розділу "Кабінет"
+      updateProfileSection(); 
     }
   });
 });
@@ -381,6 +387,8 @@ document.addEventListener('DOMContentLoaded', () => {
     splashScreen.classList.add('hidden');
     loadAnimeList('watching');
     loadNewReleases('Зима 2025');
+    // Після завантаження сторінки перевіряємо, чи користувач вже увійшов
+    checkLoginStatusAndDisplayProfile();
   }, 2000);
 });
 
@@ -483,4 +491,218 @@ function updateRating(stars, rating, hover = false) {
       star.classList.add('far');
     }
   });
+}
+
+
+// --- Логіка для реєстрації/входу (без Node.js, дані в localStorage) ---
+const authModal = document.getElementById('authModal');
+const authCloseModal = document.querySelector('.auth-close-modal');
+const authTabButtons = document.querySelectorAll('.auth-tab-btn');
+const authForms = document.querySelectorAll('.auth-form');
+
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const loginMessage = document.getElementById('loginMessage');
+const registerMessage = document.getElementById('registerMessage');
+
+const profileSection = document.getElementById('profile'); // Отримуємо секцію "КАБІНЕТ"
+let loggedInUser = localStorage.getItem('loggedInUser'); // Змінна для зберігання імені увійшовшого користувача
+
+// Функція для отримання користувачів з localStorage
+function getUsers() {
+    const usersJson = localStorage.getItem('users');
+    return usersJson ? JSON.parse(usersJson) : {};
+}
+
+// Функція для збереження користувачів у localStorage
+function saveUsers(users) {
+    localStorage.setItem('users', JSON.stringify(users));
+}
+
+// Функція для відображення розділу "Кабінет" в залежності від статусу входу
+function updateProfileSection() {
+    profileSection.innerHTML = ''; // Очищаємо вміст секції
+    const currentUser = localStorage.getItem('loggedInUser'); // Отримуємо поточного увійшовшого користувача
+
+    if (currentUser) {
+        // Користувач увійшов
+        profileSection.innerHTML = `
+            <div class="profile-content">
+                <h2>Вітаємо, ${currentUser}!</h2>
+                <p>Це ваш особистий кабінет. Тут буде персоналізований контент.</p>
+                <button id="logoutBtn" class="submit-btn" style="background-color: #ff3333; width: auto; padding: 10px 20px;">Вийти</button>
+            </div>
+        `;
+        // Переконайтеся, що кнопка "Вийти" існує, перш ніж додавати слухача подій
+        const logoutButton = document.getElementById('logoutBtn');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', logout);
+        }
+    } else {
+        // Користувач не увійшов
+        // Просто показуємо модальне вікно авторизації
+        authModal.classList.add('active');
+        activateAuthTab('login'); // Автоматично активуємо вкладку "Вхід"
+    }
+}
+
+// Функція для виходу користувача
+function logout() {
+    localStorage.removeItem('loggedInUser'); // Видаляємо статус входу
+    loggedInUser = null; // Оновлюємо змінну
+    alert('Ви успішно вийшли з облікового запису.');
+    updateProfileSection(); // Оновлюємо розділ "Кабінет"
+    
+    // Переходимо на головну сторінку, якщо це потрібно
+    document.querySelector('.menu-item[data-section="home"]').click(); 
+}
+
+
+// Обробка натискання на "КАБІНЕТ" 
+document.querySelector('.menu-item[data-section="profile"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    // Активуємо пункт меню "КАБІНЕТ"
+    document.querySelectorAll('.menu-item').forEach(menuItem => {
+        menuItem.classList.remove('active');
+    });
+    e.currentTarget.classList.add('active');
+
+    // Показуємо секцію "Кабінет"
+    document.querySelectorAll('.section-content').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById('profile').classList.add('active');
+
+    // Оновлюємо вміст секції "Кабінет" (або показуємо модалку, якщо не увійшов)
+    updateProfileSection();
+});
+
+
+// Закриття модального вікна авторизації
+authCloseModal.addEventListener('click', () => {
+    authModal.classList.remove('active');
+    clearAuthMessages();
+});
+
+// Закриття модального вікна авторизації при кліку поза ним
+window.addEventListener('click', (e) => {
+    if (e.target === authModal) {
+        authModal.classList.remove('active');
+        clearAuthMessages();
+    }
+});
+
+// Перемикання вкладок Вхід/Реєстрація
+authTabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const tab = button.dataset.authTab;
+        activateAuthTab(tab);
+        clearAuthMessages();
+    });
+});
+
+function activateAuthTab(tabName) {
+    authTabButtons.forEach(button => {
+        if (button.dataset.authTab === tabName) {
+            button.classList.add('active');
+        } else {
+            button.classList.remove('active');
+        }
+    });
+
+    authForms.forEach(form => {
+        if (form.id.startsWith(tabName)) { // 'loginForm' for 'login', 'registerForm' for 'register'
+            form.classList.add('active');
+        } else {
+            form.classList.remove('active');
+        }
+    });
+}
+
+function displayAuthMessage(element, message, type) {
+    element.textContent = message;
+    element.className = `auth-message ${type}`; // Add 'success' or 'error' class
+}
+
+function clearAuthMessages() {
+    loginMessage.textContent = '';
+    loginMessage.className = 'auth-message';
+    registerMessage.textContent = '';
+    registerMessage.className = 'auth-message';
+}
+
+
+// Обробка форми реєстрації
+registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthMessages();
+
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;
+
+    if (!username || !password) {
+        displayAuthMessage(registerMessage, 'Будь ласка, вкажіть ім\'я користувача та пароль.', 'error');
+        return;
+    }
+
+    let users = getUsers();
+
+    if (users[username]) {
+        displayAuthMessage(registerMessage, 'Користувач з таким ім\'ям вже існує.', 'error');
+        return;
+    }
+
+    // Зберігаємо пароль без хешування для простоти (НЕБЕЗПЕЧНО для реальних проектів!)
+    users[username] = password; 
+    saveUsers(users);
+
+    displayAuthMessage(registerMessage, 'Реєстрація успішна!', 'success');
+    
+    // Після успішної реєстрації можна автоматично переключити на вхід
+    setTimeout(() => {
+        activateAuthTab('login');
+        document.getElementById('loginUsername').value = username; // Заповнити логін
+        document.getElementById('loginPassword').value = ''; // Очистити пароль
+        clearAuthMessages();
+    }, 2000);
+});
+
+// Обробка форми входу
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthMessages();
+
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+
+    if (!username || !password) {
+        displayAuthMessage(loginMessage, 'Будь ласка, вкажіть ім\'я користувача та пароль.', 'error');
+        return;
+    }
+
+    let users = getUsers();
+
+    if (users[username] && users[username] === password) { // Перевірка пароля
+        displayAuthMessage(loginMessage, 'Вхід успішний!', 'success');
+        localStorage.setItem('loggedInUser', username); // Зберігаємо, що користувач увійшов
+        loggedInUser = username; // Оновлюємо змінну
+        
+        setTimeout(() => {
+            authModal.classList.remove('active'); // Закриваємо модалку після входу
+            updateProfileSection(); // Оновлюємо розділ "Кабінет" з новим статусом
+            document.getElementById('profile').classList.add('active'); // Показуємо секцію "Кабінет"
+            document.querySelector('.menu-item[data-section="profile"]').classList.add('active'); // Активуємо пункт меню
+        }, 1500);
+    } else {
+        displayAuthMessage(loginMessage, 'Неправильне ім\'я користувача або пароль.', 'error');
+    }
+});
+
+// Додаємо функцію для перевірки статусу входу при завантаженні сторінки
+function checkLoginStatusAndDisplayProfile() {
+    loggedInUser = localStorage.getItem('loggedInUser'); // Отримуємо статус входу
+    // Ця функція просто оновлює змінну `loggedInUser`, 
+    // щоб інші частини коду знали поточний статус.
+    // Вона НЕ ВІДОБРАЖАЄ розділ "Кабінет" автоматично при завантаженні.
+    // Відображення відбувається при натисканні на пункт меню "КАБІНЕТ".
 }
