@@ -112,8 +112,106 @@ async function saveStorage(data) {
   }
 }
 
+// --- Допоміжні функції для роботи з DOM ---
+function getById(id) {
+  return document.getElementById(id);
+}
+function getBySelector(selector) {
+  return document.querySelector(selector);
+}
+function getAllBySelector(selector) {
+  return document.querySelectorAll(selector);
+}
+
+// --- Клас для менеджменту аніме та користувачів ---
+class AnimeManager {
+  constructor() {
+    this.animeData = { watching: [], completed: [], plan: [] };
+    this.users = {};
+    this.loggedInUser = null;
+  }
+
+  async loadAllData() {
+    const storage = await getStorage();
+    this.animeData = storage.animeData || { watching: [], completed: [], plan: [] };
+    this.users = storage.users || {};
+    this.loggedInUser = storage.loggedInUser || null;
+  }
+
+  async saveAllData() {
+    await saveStorage({
+      animeData: this.animeData,
+      users: this.users,
+      loggedInUser: this.loggedInUser
+    });
+  }
+
+  async addOrEditAnime(newAnime, status, editMode, oldStatus, index) {
+    await this.loadAllData();
+    if (editMode) {
+      if (oldStatus === status) {
+        this.animeData[status][index] = newAnime;
+      } else {
+        this.animeData[oldStatus].splice(index, 1);
+        this.animeData[status].push(newAnime);
+      }
+    } else {
+      this.animeData[status].push(newAnime);
+    }
+    await this.saveAllData();
+  }
+
+  async deleteAnime(status, index) {
+    await this.loadAllData();
+    this.animeData[status].splice(index, 1);
+    await this.saveAllData();
+  }
+
+  getAnimeList(status) {
+    return this.animeData[status];
+  }
+
+  getAllAnime() {
+    return [
+      ...this.animeData.watching,
+      ...this.animeData.completed,
+      ...this.animeData.plan
+    ];
+  }
+
+  async registerUser(username, password) {
+    await this.loadAllData();
+    if (this.users[username]) return false;
+    this.users[username] = password;
+    await this.saveAllData();
+    return true;
+  }
+
+  async loginUser(username, password) {
+    await this.loadAllData();
+    if (this.users[username] && this.users[username] === password) {
+      this.loggedInUser = username;
+      await this.saveAllData();
+      return true;
+    }
+    return false;
+  }
+
+  async logoutUser() {
+    await this.loadAllData();
+    this.loggedInUser = null;
+    await this.saveAllData();
+  }
+
+  getLoggedInUser() {
+    return this.loggedInUser;
+  }
+}
+
+// --- Створення глобального екземпляру менеджера ---
+const animeManager = new AnimeManager();
+
 // --- Глобальні змінні ---
-var animeData = { watching: [], completed: [], plan: [] };
 var users = {};
 var loggedInUser = null;
 
@@ -143,100 +241,83 @@ function activateAuthTab(tabName) {
 // --- Завантаження та збереження всіх даних ---
 async function loadAllData() {
   const storage = await getStorage();
-  animeData = storage.animeData || { watching: [], completed: [], plan: [] };
-  users = storage.users || {};
-  loggedInUser = storage.loggedInUser || null;
+  animeManager.animeData = storage.animeData || { watching: [], completed: [], plan: [] };
+  animeManager.users = storage.users || {};
+  animeManager.loggedInUser = storage.loggedInUser || null;
 }
 
 async function saveAllData() {
-  await saveStorage({ animeData, users, loggedInUser });
+  await saveStorage({
+    animeData: animeManager.animeData,
+    users: animeManager.users,
+    loggedInUser: animeManager.loggedInUser
+  });
 }
 
 // --- Додавання, редагування, видалення аніме ---
 async function addOrEditAnime(newAnime, status, editMode, oldStatus, index) {
-  await loadAllData();
-  if (editMode) {
-    if (oldStatus === status) {
-      animeData[status][index] = newAnime;
-    } else {
-      animeData[oldStatus].splice(index, 1);
-      animeData[status].push(newAnime);
-    }
-  } else {
-    animeData[status].push(newAnime);
-  }
-  await saveAllData();
+  await animeManager.addOrEditAnime(newAnime, status, editMode, oldStatus, index);
 }
 
 async function deleteAnime(status, index) {
-  await loadAllData();
-  animeData[status].splice(index, 1);
-  await saveAllData();
+  await animeManager.deleteAnime(status, index);
   loadAnimeList(status);
 }
 
 // Функція для редагування аніме
-function editAnime(status, index) {
-  const anime = animeData[status][index];
-  const form = document.getElementById('addAnimeForm');
-  
-  // Заповнюємо форму даними аніме
-  document.getElementById('animeTitle').value = anime.title;
-  document.getElementById('animeEpisodes').value = anime.episodes;
-  document.getElementById('animeCover').value = anime.cover;
-  document.getElementById('animeVideo').value = anime.videoUrl;
-  document.getElementById('animeStatus').value = status;
-  
-  // Встановлюємо режим редагування
+function fillAnimeForm(anime, status, index) {
+  getById('animeTitle').value = anime.title;
+  getById('animeEpisodes').value = anime.episodes;
+  getById('animeCover').value = anime.cover;
+  getById('animeVideo').value = anime.videoUrl;
+  getById('animeStatus').value = status;
+  const form = getById('addAnimeForm');
   form.dataset.editMode = 'true';
   form.dataset.editStatus = status;
   form.dataset.editIndex = index;
-  
-  // Змінюємо текст кнопки
-  form.querySelector('button[type="submit"]').textContent = 'Зберегти зміни';
-  
-  // Відкриваємо модальне вікно
-  document.getElementById('addAnimeModal').classList.add('active');
+}
+
+function setAnimeFormButtonToEdit() {
+  const form = getById('addAnimeForm');
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn) btn.textContent = 'Зберегти';
+}
+
+function openAnimeModal() {
+  getById('addAnimeModal').classList.add('active');
+}
+
+function editAnime(status, index) {
+  const anime = animeManager.animeData[status][index];
+  fillAnimeForm(anime, status, index);
+  setAnimeFormButtonToEdit();
+  openAnimeModal();
 }
 
 // --- Додавання, реєстрація, вхід користувача ---
 async function registerUser(username, password) {
-  await loadAllData();
-  if (users[username]) return false;
-  users[username] = password;
-  await saveAllData();
-  return true;
+  return await animeManager.registerUser(username, password);
 }
 
 async function loginUser(username, password) {
-  await loadAllData();
-  if (users[username] && users[username] === password) {
-    loggedInUser = username;
-    await saveAllData();
-    return true;
-  }
-  return false;
+  return await animeManager.loginUser(username, password);
 }
 
 async function logoutUser() {
-  await loadAllData();
-  loggedInUser = null;
-  await saveAllData();
+  await animeManager.logoutUser();
 }
 
 // --- Кабінет ---
 async function updateProfileSection() {
-  await loadAllData(); // Завантажуємо актуальні дані
+  await animeManager.loadAllData();
   profileSection.innerHTML = '';
-  if (loggedInUser) {
-    // Підраховуємо статистику користувача
-    const totalWatching = animeData.watching.length;
-    const totalCompleted = animeData.completed.length;
-    const totalPlanned = animeData.plan.length;
-    
+  if (animeManager.loggedInUser) {
+    const totalWatching = animeManager.animeData.watching.length;
+    const totalCompleted = animeManager.animeData.completed.length;
+    const totalPlanned = animeManager.animeData.plan.length;
     profileSection.innerHTML = `
       <div class="profile-content">
-        <h2>Вітаємо, ${loggedInUser}!</h2>
+        <h2>Вітаємо, ${animeManager.loggedInUser}!</h2>
         <div class="profile-stats">
           <div class="stat-item">
             <h3>Дивлюсь</h3>
@@ -254,27 +335,25 @@ async function updateProfileSection() {
         <button id="logoutBtn" class="submit-btn" style="background-color: #ff3333; width: auto; padding: 10px 20px; margin-top: 20px;">Вийти</button>
       </div>
     `;
-      const logoutButton = document.getElementById('logoutBtn');
+    const logoutButton = getById('logoutBtn');
     if (logoutButton) {
-      // Видаляємо старі обробники подій перед додаванням нового
       const newLogoutButton = logoutButton.cloneNode(true);
       logoutButton.parentNode.replaceChild(newLogoutButton, logoutButton);
-      
       newLogoutButton.addEventListener('click', async () => {
         if (confirm('Ви впевнені, що хочете вийти?')) {
           await logoutUser();
-          document.querySelector('.menu-item[data-section="home"]').click();
+          getBySelector('.menu-item[data-section="home"]').click();
           profileSection.innerHTML = '';
           updateProfileSection();
         }
       });
-    }} else {
-    // Show a message prompting user to log in
+    }
+  } else {
     profileSection.innerHTML = `
       <div class="profile-content">
         <h2>Ласкаво просимо!</h2>
         <p style="text-align: center; margin: 20px 0;">Будь ласка, увійдіть або зареєструйтесь, щоб отримати доступ до свого кабінету.</p>
-        <button class="submit-btn" onclick="document.querySelector('.menu-item[data-section=profile]').click()">
+        <button class="submit-btn" onclick="getBySelector('.menu-item[data-section=profile]').click()">
           Увійти / Зареєструватися
         </button>
       </div>
@@ -384,15 +463,14 @@ searchInput.addEventListener('input', async (e) => {
   displaySearchResults(filteredAnime);
 });
 
+// --- Оновлена функція displaySearchResults з використанням допоміжних функцій ---
 function displaySearchResults(results) {
   searchResults.innerHTML = '';
-  
   if (results.length === 0) {
     searchResults.innerHTML = '<div class="search-result-item">Нічого не знайдено</div>';
     searchResults.classList.add('active');
     return;
   }
-  
   results.forEach(anime => {
     const resultItem = document.createElement('div');
     resultItem.className = 'search-result-item';
@@ -403,16 +481,15 @@ function displaySearchResults(results) {
         <small>${anime.episodes}</small>
       </div>
     `;
-    
     resultItem.addEventListener('click', async () => {
       let found = false;
-      await loadAllData();
+      await animeManager.loadAllData();
       ['watching', 'completed', 'plan'].forEach(status => {
-        const index = animeData[status].findIndex(a => a.title === anime.title);
+        const index = animeManager.animeData[status].findIndex(a => a.title === anime.title);
         if (index !== -1) {
-          document.querySelector(`[data-tab="${status}"]`).click();
+          getBySelector(`[data-tab="${status}"]`).click();
           setTimeout(() => {
-            const cards = document.querySelectorAll('.anime-card');
+            const cards = getAllBySelector('.anime-card');
             if (cards[index]) {
               cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
               cards[index].style.transform = 'scale(1.05)';
@@ -432,10 +509,8 @@ function displaySearchResults(results) {
       searchResults.classList.remove('active');
       searchInput.value = '';
     });
-    
     searchResults.appendChild(resultItem);
   });
-  
   searchResults.classList.add('active');
 }
 
@@ -460,7 +535,7 @@ document.querySelectorAll('.menu-item[data-section]').forEach(item => {
     const sectionId = item.getAttribute('data-section');
     
     // Перевірка для розділу "Кабінет"
-    if (sectionId === 'profile' && !loggedInUser) {
+    if (sectionId === 'profile' && !animeManager.loggedInUser) {
       authModal.classList.add('active');
       activateAuthTab('login');
       return;
@@ -525,7 +600,7 @@ function loadNewReleases(season) {
 // Функція для перевірки статусу входу
 async function checkLoginStatusAndDisplayProfile() {
   await loadAllData();
-  if (loggedInUser) {
+  if (animeManager.loggedInUser) {
     document.querySelector('.menu-item[data-section="profile"]').click();
   }
 }
@@ -557,10 +632,10 @@ document.querySelectorAll('.tab-btn').forEach(button => {
 
 // Load anime list based on status
 function loadAnimeList(status) {
-  const animeList = document.getElementById('animeList');
+  const animeList = getById('animeList');
   animeList.innerHTML = '';
   
-  animeData[status].forEach((anime, index) => {
+  animeManager.animeData[status].forEach((anime, index) => {
     const card = createAnimeCard(anime, status, index);
     animeList.appendChild(card);
   });
@@ -568,7 +643,7 @@ function loadAnimeList(status) {
 
 // Create anime card from template
 function createAnimeCard(anime, status, index) {
-  const template = document.getElementById('animeCardTemplate');
+  const template = getById('animeCardTemplate');
   const card = template.content.cloneNode(true);
   
   // Set anime data
@@ -616,7 +691,7 @@ function createAnimeCard(anime, status, index) {
       const rating = i + 1;
       updateRating(stars, rating);
       anime.rating = rating;
-      await saveAllData();
+      await animeManager.saveAllData();
     });
     star.addEventListener('mouseover', () => {
       updateRating(stars, i + 1, true);
@@ -726,7 +801,7 @@ function displaySearchResults(results) {
       let found = false;
       await loadAllData();
       ['watching', 'completed', 'plan'].forEach(status => {
-        const index = animeData[status].findIndex(a => a.title === anime.title);
+        const index = animeManager.animeData[status].findIndex(a => a.title === anime.title);
         if (index !== -1) {
           document.querySelector(`[data-tab="${status}"]`).click();
           setTimeout(() => {
@@ -759,11 +834,11 @@ function displaySearchResults(results) {
 
 // --- ОНОВИТИ allAnime для пошуку ---
 async function getAllAnime() {
-  await loadAllData();
+  await animeManager.loadAllData();
   return [
-    ...animeData.watching,
-    ...animeData.completed,
-    ...animeData.plan,
+    ...animeManager.animeData.watching,
+    ...animeManager.animeData.completed,
+    ...animeManager.animeData.plan,
     ...Object.values(newReleasesData).flat(),
     {
       title: "One Piece",
