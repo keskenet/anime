@@ -31,12 +31,13 @@ const defaultAnimeData = {
       episodes: "64 епізоди",
       cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
       rating: 0,
-      videoUrl: "https://example.com/watch/fullmetal-alchemist"
+      videoUrl: "https://example.com/watch/fullmetal-alchemist",
+      plannedDate: "2025-07-15"
     }
   ]
 };
 
-// New releases data
+// New releases data (before user additions)
 const newReleasesData = {
   "Зима 2025": [
     {
@@ -96,9 +97,10 @@ async function getStorage() {
   }
   // Return default structure if storage can't be read or is empty
   return {
-    animeData: { watching: [], completed: [], plan: [] },
+    animeData: defaultAnimeData,
     users: {},
-    loggedInUser: null
+    loggedInUser: null,
+    userNewReleases: {} // Ініціалізуємо для нових релізів, доданих користувачем
   };
 }
 
@@ -123,52 +125,171 @@ function getAllBySelector(selector) {
   return document.querySelectorAll(selector);
 }
 
+// --- Функція для визначення сезону за датою ---
+function getSeasonFromDate(dateString) {
+  const date = new Date(dateString);
+  const month = date.getMonth(); // 0-11
+  const year = date.getFullYear();
+
+  let season = "";
+  if (month >= 11 || month <= 1) { // Грудень, Січень, Лютий
+    season = "Зима";
+  } else if (month >= 2 && month <= 4) { // Березень, Квітень, Травень
+    season = "Весна";
+  } else if (month >= 5 && month <= 7) { // Червень, Липень, Серпень
+    season = "Літо";
+  } else { // Вересень, Жовтень, Листопад
+    season = "Осінь";
+  }
+  return `${season} ${year}`;
+}
+
 // --- Клас для менеджменту аніме та користувачів ---
 class AnimeManager {
   constructor() {
     this.animeData = { watching: [], completed: [], plan: [] };
     this.users = {};
     this.loggedInUser = null;
+    this.userNewReleases = {}; // Для аніме, доданого користувачем до нових релізів
   }
 
   async loadAllData() {
     const storage = await getStorage();
-    this.animeData = storage.animeData || { watching: [], completed: [], plan: [] };
+    this.animeData = storage.animeData && Object.keys(storage.animeData).length > 0
+      ? storage.animeData
+      : defaultAnimeData;
     this.users = storage.users || {};
     this.loggedInUser = storage.loggedInUser || null;
+    this.userNewReleases = storage.userNewReleases || {}; // Завантажуємо дані
   }
 
   async saveAllData() {
     await saveStorage({
       animeData: this.animeData,
       users: this.users,
-      loggedInUser: this.loggedInUser
+      loggedInUser: this.loggedInUser,
+      userNewReleases: this.userNewReleases // Зберігаємо дані
     });
   }
 
   async addOrEditAnime(newAnime, status, editMode, oldStatus, index) {
     await this.loadAllData();
+
+    // Визначаємо сезон на основі plannedDate, якщо він існує і статус 'plan'
+    let seasonToAdd = null;
+    if (status === 'plan' && newAnime.plannedDate) {
+        seasonToAdd = getSeasonFromDate(newAnime.plannedDate);
+    }
+
     if (editMode) {
+      const oldAnime = this.animeData[oldStatus][index];
+
       if (oldStatus === status) {
         this.animeData[status][index] = newAnime;
       } else {
         this.animeData[oldStatus].splice(index, 1);
         this.animeData[status].push(newAnime);
       }
-    } else {
+
+      // Оновлення userNewReleases: видаляємо стару версію
+      if (oldAnime && oldAnime.title) {
+        for (const s in this.userNewReleases) {
+            this.userNewReleases[s] = this.userNewReleases[s].filter(a => a.title !== oldAnime.title);
+        }
+      }
+      
+      // Додаємо нову версію, якщо є сезон
+      if (seasonToAdd) {
+        if (!this.userNewReleases[seasonToAdd]) {
+            this.userNewReleases[seasonToAdd] = [];
+        }
+        // Перевіряємо, чи аніме вже не існує в цьому сезоні, щоб уникнути дублікатів
+        const isAlreadyInSeason = this.userNewReleases[seasonToAdd].some(a => a.title === newAnime.title);
+        if (!isAlreadyInSeason) {
+            this.userNewReleases[seasonToAdd].push(newAnime);
+        }
+      }
+
+    } else { // Додавання нового аніме
       this.animeData[status].push(newAnime);
+      
+      // Додаємо до userNewReleases, якщо є сезон
+      if (seasonToAdd) {
+        if (!this.userNewReleases[seasonToAdd]) {
+          this.userNewReleases[seasonToAdd] = [];
+        }
+        // Перевіряємо, чи аніме вже не існує в цьому сезоні, щоб уникнути дублікатів
+        const isAlreadyInSeason = this.userNewReleases[seasonToAdd].some(a => a.title === newAnime.title);
+        if (!isAlreadyInSeason) {
+            this.userNewReleases[seasonToAdd].push(newAnime);
+        }
+      }
     }
     await this.saveAllData();
   }
 
   async deleteAnime(status, index) {
     await this.loadAllData();
+    const animeToDelete = this.animeData[status][index];
     this.animeData[status].splice(index, 1);
+
+    // Видаляємо також з userNewReleases, якщо воно там є
+    if (animeToDelete && animeToDelete.title) {
+        for (const s in this.userNewReleases) {
+            this.userNewReleases[s] = this.userNewReleases[s].filter(a => a.title !== animeToDelete.title);
+        }
+    }
     await this.saveAllData();
   }
 
-  getAnimeList(status) {
-    return this.animeData[status];
+  // Нова функція для отримання всіх нових релізів (передзавантажених + користувацьких)
+  async getCombinedNewReleases(season) {
+      await this.loadAllData();
+      const combined = [
+          ...(newReleasesData[season] || []), // Передзавантажені дані
+          ...(this.userNewReleases[season] || []) // Дані, додані користувачем
+      ];
+      // Забезпечуємо унікальність за назвою, якщо одне і те ж аніме є в обох списках
+      const uniqueTitles = new Set();
+      const uniqueReleases = [];
+      for (const anime of combined) {
+          if (!uniqueTitles.has(anime.title)) {
+              uniqueTitles.add(anime.title);
+              uniqueReleases.push(anime);
+          }
+      }
+      return uniqueReleases;
+  }
+
+  // Отримуємо всі унікальні сезони з передзавантажених та користувацьких даних
+  async getAllUniqueSeasons() {
+    await this.loadAllData();
+    const allSeasons = new Set();
+
+    // Додаємо сезони з передзавантажених даних
+    for (const season in newReleasesData) {
+      allSeasons.add(season);
+    }
+
+    // Додаємо сезони з даних користувача
+    for (const season in this.userNewReleases) {
+      allSeasons.add(season);
+    }
+    
+    // Сортуємо сезони, щоб вони йшли в логічному порядку (наприклад, по року, потім по сезону)
+    const sortedSeasons = Array.from(allSeasons).sort((a, b) => {
+        const [seasonNameA, yearA] = a.split(' ');
+        const [seasonNameB, yearB] = b.split(' ');
+        
+        if (parseInt(yearA) !== parseInt(yearB)) {
+            return parseInt(yearA) - parseInt(yearB);
+        }
+        
+        const seasonOrder = { "Зима": 1, "Весна": 2, "Літо": 3, "Осінь": 4 };
+        return seasonOrder[seasonNameA] - seasonOrder[seasonNameB];
+    });
+
+    return sortedSeasons;
   }
 
   getAllAnime() {
@@ -211,16 +332,10 @@ class AnimeManager {
 // --- Створення глобального екземпляру менеджера ---
 const animeManager = new AnimeManager();
 
-// --- Глобальні змінні ---
-var users = {};
-var loggedInUser = null;
+const profileSection = getById('profile');
 
-// ДОДАТИ ініціалізацію profileSection
-const profileSection = document.getElementById('profile');
-
-// ДОДАТИ ініціалізацію authModal, authTabButtons, activateAuthTab
-const authModal = document.getElementById('authModal');
-const authTabButtons = document.querySelectorAll('.auth-tab-btn');
+const authModal = getById('authModal');
+const authTabButtons = getAllBySelector('.auth-tab-btn');
 function activateAuthTab(tabName) {
   authTabButtons.forEach(button => {
     if (button.dataset.authTab === tabName) {
@@ -229,7 +344,7 @@ function activateAuthTab(tabName) {
       button.classList.remove('active');
     }
   });
-  document.querySelectorAll('.auth-form').forEach(form => {
+  getAllBySelector('.auth-form').forEach(form => {
     if (form.id.startsWith(tabName)) {
       form.classList.add('active');
     } else {
@@ -238,39 +353,36 @@ function activateAuthTab(tabName) {
   });
 }
 
-// --- Завантаження та збереження всіх даних ---
-async function loadAllData() {
-  const storage = await getStorage();
-  animeManager.animeData = storage.animeData || { watching: [], completed: [], plan: [] };
-  animeManager.users = storage.users || {};
-  animeManager.loggedInUser = storage.loggedInUser || null;
-}
-
-async function saveAllData() {
-  await saveStorage({
-    animeData: animeManager.animeData,
-    users: animeManager.users,
-    loggedInUser: animeManager.loggedInUser
-  });
-}
-
-// --- Додавання, редагування, видалення аніме ---
-async function addOrEditAnime(newAnime, status, editMode, oldStatus, index) {
-  await animeManager.addOrEditAnime(newAnime, status, editMode, oldStatus, index);
-}
-
-async function deleteAnime(status, index) {
-  await animeManager.deleteAnime(status, index);
-  loadAnimeList(status);
-}
-
 // Функція для редагування аніме
-function fillAnimeForm(anime, status, index) {
+async function fillAnimeForm(anime, status, index) { // Додаємо async
   getById('animeTitle').value = anime.title;
   getById('animeEpisodes').value = anime.episodes;
   getById('animeCover').value = anime.cover;
   getById('animeVideo').value = anime.videoUrl;
   getById('animeStatus').value = status;
+  const plannedDateInput = getById('animePlannedDate');
+  const plannedDateGroup = getById('animePlannedDateGroup');
+
+  if (status === 'plan' && anime.plannedDate) {
+    plannedDateInput.value = anime.plannedDate;
+    plannedDateGroup.style.display = 'block';
+  } else {
+    plannedDateInput.value = '';
+    plannedDateGroup.style.display = 'none';
+  }
+
+  // Оновлюємо список сезонів у формі
+  await updateSeasonSelectOptions();
+
+  // Встановлюємо сезон, якщо аніме має plannedDate
+  const animeSeasonSelect = getById('animeSeason');
+  if (status === 'plan' && anime.plannedDate) {
+      const season = getSeasonFromDate(anime.plannedDate);
+      animeSeasonSelect.value = season;
+  } else {
+      animeSeasonSelect.value = ''; // Скидаємо вибір сезону, якщо не "Заплановано" або немає дати
+  }
+
   const form = getById('addAnimeForm');
   form.dataset.editMode = 'true';
   form.dataset.editStatus = status;
@@ -287,14 +399,13 @@ function openAnimeModal() {
   getById('addAnimeModal').classList.add('active');
 }
 
-function editAnime(status, index) {
+async function editAnime(status, index) { // Додаємо async
   const anime = animeManager.animeData[status][index];
-  fillAnimeForm(anime, status, index);
+  await fillAnimeForm(anime, status, index); // Викликаємо async fillAnimeForm
   setAnimeFormButtonToEdit();
   openAnimeModal();
 }
 
-// --- Додавання, реєстрація, вхід користувача ---
 async function registerUser(username, password) {
   return await animeManager.registerUser(username, password);
 }
@@ -353,29 +464,46 @@ async function updateProfileSection() {
       <div class="profile-content">
         <h2>Ласкаво просимо!</h2>
         <p style="text-align: center; margin: 20px 0;">Будь ласка, увійдіть або зареєструйтесь, щоб отримати доступ до свого кабінету.</p>
-        <button class="submit-btn" onclick="getBySelector('.menu-item[data-section=profile]').click()">
+        <button class="submit-btn" onclick="openAuthModalAndShowLogin()">
           Увійти / Зареєструватися
         </button>
       </div>
     `;
-    authModal.classList.add('active');
-    activateAuthTab('login');
   }
 }
 
-// Modal functionality
-const modal = document.getElementById('addAnimeModal');
-const addAnimeBtn = document.getElementById('addAnimeBtn');
-const closeModal = document.querySelector('.close-modal');
-const addAnimeForm = document.getElementById('addAnimeForm');
+function openAuthModalAndShowLogin() {
+  authModal.classList.add('active');
+  activateAuthTab('login');
+}
 
-addAnimeBtn.addEventListener('click', () => {
-  // Reset form and edit mode
+// Modal functionality
+const modal = getById('addAnimeModal');
+const addAnimeBtn = getById('addAnimeBtn');
+const closeModal = getBySelector('.close-modal');
+const addAnimeForm = getById('addAnimeForm');
+
+const animeStatusSelect = getById('animeStatus');
+const animePlannedDateGroup = getById('animePlannedDateGroup');
+const animePlannedDateInput = getById('animePlannedDate');
+const animeSeasonSelect = getById('animeSeason'); // Отримуємо елемент select для сезону
+
+addAnimeBtn.addEventListener('click', async () => { // Додаємо async
   addAnimeForm.reset();
   delete addAnimeForm.dataset.editMode;
   delete addAnimeForm.dataset.editStatus;
   delete addAnimeForm.dataset.editIndex;
-  
+
+  animePlannedDateGroup.style.display = 'none';
+  animePlannedDateInput.value = '';
+
+  // Скидаємо вибір сезону при відкритті модалки і оновлюємо опції
+  animeSeasonSelect.value = '';
+  await updateSeasonSelectOptions();
+
+  const submitBtn = addAnimeForm.querySelector('.submit-btn');
+  if (submitBtn) submitBtn.textContent = 'Додати';
+
   modal.classList.add('active');
 });
 
@@ -389,6 +517,51 @@ window.addEventListener('click', (e) => {
   }
 });
 
+animeStatusSelect.addEventListener('change', () => {
+  if (animeStatusSelect.value === 'plan') {
+    animePlannedDateGroup.style.display = 'block';
+  } else {
+    animePlannedDateGroup.style.display = 'none';
+    animePlannedDateInput.value = '';
+  }
+});
+
+// Обробник зміни дати для автоматичного вибору сезону
+animePlannedDateInput.addEventListener('change', async () => {
+  const selectedDate = animePlannedDateInput.value;
+  if (selectedDate) {
+    const season = getSeasonFromDate(selectedDate);
+    // Перевіряємо, чи існує такий сезон у випадаючому списку, якщо ні - додаємо
+    await updateSeasonSelectOptions(season);
+    animeSeasonSelect.value = season;
+  } else {
+    animeSeasonSelect.value = '';
+  }
+});
+
+// Функція для оновлення опцій у випадаючому списку сезонів
+async function updateSeasonSelectOptions(highlightSeason = null) {
+  const allUniqueSeasons = await animeManager.getAllUniqueSeasons();
+  animeSeasonSelect.innerHTML = '<option value="">Не обрано</option>'; // Завжди починаємо з опції "Не обрано"
+
+  // Додаємо всі унікальні сезони до випадаючого списку
+  allUniqueSeasons.forEach(season => {
+    const option = document.createElement('option');
+    option.value = season;
+    option.textContent = season;
+    animeSeasonSelect.appendChild(option);
+  });
+
+  // Якщо потрібно виділити певний сезон, і його немає в списку, додаємо його
+  if (highlightSeason && !allUniqueSeasons.includes(highlightSeason)) {
+      const newOption = document.createElement('option');
+      newOption.value = highlightSeason;
+      newOption.textContent = highlightSeason;
+      animeSeasonSelect.appendChild(newOption);
+  }
+}
+
+
 // Функція для валідації URL
 function isValidUrl(urlString) {
   try {
@@ -399,47 +572,63 @@ function isValidUrl(urlString) {
   }
 }
 
-// --- ОНОВИТИ додавання/редагування аніме ---
 addAnimeForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  
-  const coverUrl = document.getElementById('animeCover').value;
-  const videoUrl = document.getElementById('animeVideo').value;
-  const title = document.getElementById('animeTitle').value.trim();
-  const episodes = document.getElementById('animeEpisodes').value.trim();
-  
-  // Валідація даних
+
+  const coverUrl = getById('animeCover').value;
+  const videoUrl = getById('animeVideo').value;
+  const title = getById('animeTitle').value.trim();
+  const episodes = getById('animeEpisodes').value.trim();
+  const status = getById('animeStatus').value;
+  const plannedDate = status === 'plan' ? getById('animePlannedDate').value : '';
+  // `selectedSeason` тепер не потрібен, оскільки сезон визначається автоматично з `plannedDate`
+  // або не використовується, якщо статус не 'plan'
+
   if (!title || !episodes) {
-    alert('Будь ласка, заповніть всі поля');
+    alert('Будь ласка, заповніть всі обов\'язкові поля');
     return;
   }
-  
+
   if (!isValidUrl(coverUrl) || !isValidUrl(videoUrl)) {
     alert('Будь ласка, введіть коректні URL для обкладинки та відео');
     return;
   }
-  
+
+  if (status === 'plan' && !plannedDate) {
+    alert('Будь ласка, оберіть заплановану дату перегляду.');
+    return;
+  }
+
   const newAnime = {
     title,
     episodes,
     cover: coverUrl,
     videoUrl,
-    rating: 0
+    rating: 0,
+    plannedDate: plannedDate
   };
-  
-  const status = document.getElementById('animeStatus').value;
+
   const editMode = addAnimeForm.dataset.editMode === 'true';
   const oldStatus = addAnimeForm.dataset.editStatus;
   const index = parseInt(addAnimeForm.dataset.editIndex);
-  
+
   try {
-    await addOrEditAnime(newAnime, status, editMode, oldStatus, index);
-    loadAnimeList(status);
+    // animeManager.addOrEditAnime тепер сам визначає сезон на основі plannedDate
+    await animeManager.addOrEditAnime(newAnime, status, editMode, oldStatus, index);
+    loadAnimeList(status); // Перезавантажуємо список поточного статусу
+
+    // Визначаємо поточний активний сезон, щоб завантажити його після додавання/редагування
+    const currentActiveSeasonButton = getBySelector('.season-btn.active');
+    const currentActiveSeason = currentActiveSeasonButton ? currentActiveSeasonButton.textContent : 'Зима 2025';
+    await loadNewReleases(currentActiveSeason); // Перезавантажуємо нові релізи
+
     addAnimeForm.reset();
     delete addAnimeForm.dataset.editMode;
     delete addAnimeForm.dataset.editStatus;
     delete addAnimeForm.dataset.editIndex;
     modal.classList.remove('active');
+    animePlannedDateGroup.style.display = 'none';
+    animeSeasonSelect.value = ''; // Скидаємо вибір сезону
   } catch (error) {
     console.error('Помилка при збереженні аніме:', error);
     alert('Сталася помилка при збереженні. Спробуйте пізніше.');
@@ -447,8 +636,8 @@ addAnimeForm.addEventListener('submit', async (e) => {
 });
 
 // Search functionality
-const searchInput = document.getElementById('searchInput');
-const searchResults = document.getElementById('searchResults');
+const searchInput = getById('searchInput');
+const searchResults = getById('searchResults');
 
 searchInput.addEventListener('input', async (e) => {
   const searchTerm = e.target.value.toLowerCase();
@@ -456,14 +645,13 @@ searchInput.addEventListener('input', async (e) => {
     searchResults.classList.remove('active');
     return;
   }
-  const allAnime = await getAllAnime();
-  const filteredAnime = allAnime.filter(anime => 
+  const allAnime = animeManager.getAllAnime();
+  const filteredAnime = allAnime.filter(anime =>
     anime.title.toLowerCase().includes(searchTerm)
   );
   displaySearchResults(filteredAnime);
 });
 
-// --- Оновлена функція displaySearchResults з використанням допоміжних функцій ---
 function displaySearchResults(results) {
   searchResults.innerHTML = '';
   if (results.length === 0) {
@@ -514,7 +702,6 @@ function displaySearchResults(results) {
   searchResults.classList.add('active');
 }
 
-// Close search results when clicking outside
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-container')) {
     searchResults.classList.remove('active');
@@ -523,55 +710,91 @@ document.addEventListener('click', (e) => {
 
 // Navigation functionality
 document.querySelectorAll('.menu-item[data-section]').forEach(item => {
-  item.addEventListener('click', (e) => {
+  item.addEventListener('click', async (e) => {
     e.preventDefault();
-    
-    // Update active menu item
+
     document.querySelectorAll('.menu-item').forEach(menuItem => {
       menuItem.classList.remove('active');
     });
     item.classList.add('active');
-      // Show corresponding section
+
     const sectionId = item.getAttribute('data-section');
-    
-    // Перевірка для розділу "Кабінет"
+
+    await animeManager.loadAllData();
     if (sectionId === 'profile' && !animeManager.loggedInUser) {
-      authModal.classList.add('active');
-      activateAuthTab('login');
+      openAuthModalAndShowLogin();
       return;
     }
-    
+
     document.querySelectorAll('.section-content').forEach(section => {
       section.classList.remove('active');
     });
-    document.getElementById(sectionId).classList.add('active');
-    
-    // Load content if needed
+    getById(sectionId).classList.add('active');
+
     if (sectionId === 'home') {
       loadAnimeList('watching');
     } else if (sectionId === 'new') {
-      loadNewReleases('Зима 2025');
+      await updateSeasonButtons(); // Оновлюємо кнопки сезонів
+      // Після оновлення кнопок, перевіряємо, чи є вже активна кнопка сезону
+      const activeSeasonBtn = getBySelector('.season-selector .season-btn.active');
+      let seasonToLoad = 'Зима 2025'; // Дефолтний сезон, якщо жодна кнопка не активна
+      if (activeSeasonBtn) {
+          seasonToLoad = activeSeasonBtn.textContent;
+      } else if (document.querySelectorAll('.season-selector .season-btn').length > 0) {
+          // Якщо активної кнопки немає, але кнопки є, активуємо першу
+          const firstSeasonBtn = getBySelector('.season-selector .season-btn');
+          firstSeasonBtn.classList.add('active');
+          seasonToLoad = firstSeasonBtn.textContent;
+      }
+      loadNewReleases(seasonToLoad); // Завантажуємо поточний активний сезон
     } else if (sectionId === 'profile') {
       updateProfileSection();
     }
   });
 });
 
-// Season selector functionality
-document.querySelectorAll('.season-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    loadNewReleases(btn.textContent);
-  });
-});
+// Функція для динамічного оновлення кнопок сезонів
+async function updateSeasonButtons() {
+    const seasonSelector = getBySelector('.season-selector');
+    seasonSelector.innerHTML = ''; // Очищаємо існуючі кнопки
+
+    const uniqueSeasons = await animeManager.getAllUniqueSeasons();
+    
+    let firstSeasonAdded = false;
+
+    uniqueSeasons.forEach(season => {
+        const button = document.createElement('button');
+        button.classList.add('season-btn');
+        button.textContent = season;
+        
+        // Активуємо першу кнопку, якщо ще немає активних
+        if (!firstSeasonAdded) {
+            button.classList.add('active');
+            firstSeasonAdded = true;
+        }
+
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            loadNewReleases(button.textContent);
+        });
+        seasonSelector.appendChild(button);
+    });
+}
 
 // Load new releases
-function loadNewReleases(season) {
-  const newReleasesList = document.getElementById('newReleasesList');
+async function loadNewReleases(season) {
+  const newReleasesList = getById('newReleasesList');
   newReleasesList.innerHTML = '';
-  
-  newReleasesData[season].forEach(anime => {
+
+  const combinedReleases = await animeManager.getCombinedNewReleases(season);
+
+  if (combinedReleases.length === 0) {
+    newReleasesList.innerHTML = '<p style="text-align: center; margin-top: 20px;">Дані для цього сезону відсутні.</p>';
+    return;
+  }
+
+  combinedReleases.forEach(anime => {
     const card = document.createElement('div');
     card.className = 'anime-card';
     card.innerHTML = `
@@ -579,7 +802,7 @@ function loadNewReleases(season) {
         <img src="${anime.cover}" alt="${anime.title}">
         <div class="anime-overlay">
           <div class="rating">
-            ${Array(5).fill().map((_, i) => 
+            ${Array(5).fill().map((_, i) =>
               `<i class="${i < Math.floor(anime.rating) ? 'fas' : 'far'} fa-star"></i>`
             ).join('')}
           </div>
@@ -597,23 +820,31 @@ function loadNewReleases(season) {
   });
 }
 
-// Функція для перевірки статусу входу
 async function checkLoginStatusAndDisplayProfile() {
-  await loadAllData();
+  await animeManager.loadAllData();
   if (animeManager.loggedInUser) {
-    document.querySelector('.menu-item[data-section="profile"]').click();
+    updateProfileSection();
   }
 }
 
 // Splash screen functionality
-document.addEventListener('DOMContentLoaded', () => {
-  const splashScreen = document.querySelector('.splash-screen');
-  
-  setTimeout(() => {
+document.addEventListener('DOMContentLoaded', async () => { // Додаємо async
+  const splashScreen = getBySelector('.splash-screen');
+
+  await animeManager.loadAllData(); // Завантажуємо дані при старті
+  await updateSeasonButtons(); // Оновлюємо кнопки сезонів одразу після завантаження даних
+
+  setTimeout(async () => { // Додаємо async
     splashScreen.classList.add('hidden');
     loadAnimeList('watching');
-    loadNewReleases('Зима 2025');
-    // Після завантаження сторінки перевіряємо, чи користувач вже увійшов
+    // Завантажуємо новинки для першого активного сезону (який буде першим у відсортованому списку)
+    const firstActiveSeasonButton = getBySelector('.season-selector .season-btn.active');
+    if (firstActiveSeasonButton) {
+      loadNewReleases(firstActiveSeasonButton.textContent);
+    } else {
+      // Якщо з якоїсь причини кнопок ще немає, використовуємо дефолтний сезон
+      loadNewReleases('Зима 2025');
+    }
     checkLoginStatusAndDisplayProfile();
   }, 2000);
 });
@@ -621,39 +852,44 @@ document.addEventListener('DOMContentLoaded', () => {
 // Tab switching functionality
 document.querySelectorAll('.tab-btn').forEach(button => {
   button.addEventListener('click', () => {
-    // Update active tab
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
-    
-    // Load corresponding anime list
+
     loadAnimeList(button.dataset.tab);
   });
 });
 
-// Load anime list based on status
-function loadAnimeList(status) {
+async function loadAnimeList(status) {
   const animeList = getById('animeList');
   animeList.innerHTML = '';
-  
-  animeManager.animeData[status].forEach((anime, index) => {
+
+  await animeManager.loadAllData();
+  const currentList = animeManager.animeData[status] || [];
+
+  currentList.forEach((anime, index) => {
     const card = createAnimeCard(anime, status, index);
     animeList.appendChild(card);
   });
 }
 
-// Create anime card from template
 function createAnimeCard(anime, status, index) {
   const template = getById('animeCardTemplate');
   const card = template.content.cloneNode(true);
-  
-  // Set anime data
+
   card.querySelector('.anime-title').textContent = anime.title;
-  card.querySelector('.anime-episodes').textContent = anime.episodes;
+  const episodesElement = card.querySelector('.anime-episodes');
+  if (status === 'plan' && anime.plannedDate) {
+    const date = new Date(anime.plannedDate);
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    episodesElement.textContent = `Заплановано на: ${date.toLocaleDateString('uk-UA', options)}`;
+  } else {
+    episodesElement.textContent = anime.episodes;
+  }
+
   card.querySelector('.anime-cover img').src = anime.cover;
   card.querySelector('.anime-cover img').alt = anime.title;
   card.querySelector('.watch-btn').href = anime.videoUrl;
-  
-  // Add edit and delete buttons
+
   const overlay = card.querySelector('.anime-overlay');
   const actionButtons = document.createElement('div');
   actionButtons.className = 'action-buttons';
@@ -665,27 +901,40 @@ function createAnimeCard(anime, status, index) {
       <i class="fas fa-trash"></i>
     </button>
   `;
-  
-  // Add event listeners for edit and delete
-  actionButtons.querySelector('.edit-btn').addEventListener('click', (e) => {
+
+  actionButtons.querySelector('.edit-btn').addEventListener('click', async (e) => { // Додаємо async
     e.preventDefault();
-    editAnime(status, index);
+    await editAnime(status, index); // Викликаємо async editAnime
   });
-  
-  actionButtons.querySelector('.delete-btn').addEventListener('click', (e) => {
+
+  actionButtons.querySelector('.delete-btn').addEventListener('click', async (e) => { // Додаємо async
     e.preventDefault();
     if (confirm('Ви впевнені, що хочете видалити це аніме?')) {
-      deleteAnime(status, index);
+      await animeManager.deleteAnime(status, index); // Видаляємо аніме
+      loadAnimeList(status); // Перезавантажуємо поточний список
+      await updateSeasonButtons(); // Оновлюємо кнопки сезонів
+      // Перезавантажуємо нові релізи для поточного активного сезону
+      const currentActiveSeasonButton = getBySelector('.season-selector .season-btn.active');
+      if (currentActiveSeasonButton) {
+        loadNewReleases(currentActiveSeasonButton.textContent);
+      } else {
+        // Якщо немає активної кнопки, але є сезони, активуємо першу
+        const firstSeasonBtn = getBySelector('.season-selector .season-btn');
+        if (firstSeasonBtn) {
+            firstSeasonBtn.classList.add('active');
+            loadNewReleases(firstSeasonBtn.textContent);
+        } else { // Якщо взагалі немає сезонів
+            loadNewReleases(''); // Завантажуємо порожній список
+        }
+      }
     }
   });
-  
+
   overlay.insertBefore(actionButtons, overlay.firstChild);
-  
-  // Set rating
+
   const stars = card.querySelectorAll('.rating i');
   updateRating(stars, anime.rating);
-  
-  // Add rating functionality
+
   stars.forEach((star, i) => {
     star.addEventListener('click', async () => {
       const rating = i + 1;
@@ -700,11 +949,10 @@ function createAnimeCard(anime, status, index) {
       updateRating(stars, anime.rating);
     });
   });
-  
+
   return card;
 }
 
-// Update rating display
 function updateRating(stars, rating, hover = false) {
   stars.forEach((star, index) => {
     if (index < rating) {
@@ -717,269 +965,89 @@ function updateRating(stars, rating, hover = false) {
   });
 }
 
-// --- ВИДАЛИТИ старі функції та дублікати ---
-// Видаляємо let animeData = JSON.parse(localStorage.getItem('animeData')) || defaultAnimeData;
-// Видаляємо function saveAnimeData() { ... }
-// Видаляємо стару функцію deleteAnime (яка не async)
-// Видаляємо стару функцію editAnime (яка не async)
-// Видаляємо стару функцію для ініціалізації даних аніме
-// Видаляємо старі обробники подій для кнопок редагування та видалення аніме
-// Видаляємо старі функції для роботи з localStorage
-// Видаляємо стару функцію getAllAnime (яка не async)
+// --- Auth Modal Logic ---
+const authCloseModal = getBySelector('.auth-close-modal');
+const loginForm = getById('loginForm');
+const registerForm = getById('registerForm');
+const loginMessage = getById('loginMessage');
+const registerMessage = getById('registerMessage');
 
-// --- ОНОВИТИ додавання/редагування аніме ---
-addAnimeForm.addEventListener('submit', async (e) => {
+authTabButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    activateAuthTab(button.dataset.authTab);
+  });
+});
+
+authCloseModal.addEventListener('click', () => {
+  authModal.classList.remove('active');
+  loginMessage.style.display = 'none';
+  registerMessage.style.display = 'none';
+  loginForm.reset();
+  registerForm.reset();
+});
+
+loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  
-  const coverUrl = document.getElementById('animeCover').value;
-  const videoUrl = document.getElementById('animeVideo').value;
-  const title = document.getElementById('animeTitle').value.trim();
-  const episodes = document.getElementById('animeEpisodes').value.trim();
-  
-  // Валідація даних
-  if (!title || !episodes) {
-    alert('Будь ласка, заповніть всі поля');
+  const username = getById('loginUsername').value.trim();
+  const password = getById('loginPassword').value.trim();
+
+  loginMessage.style.display = 'none'; // Hide previous messages
+
+  if (!username || !password) {
+    loginMessage.textContent = 'Будь ласка, введіть ім\'я користувача та пароль.';
+    loginMessage.classList.remove('success');
+    loginMessage.classList.add('error');
+    loginMessage.style.display = 'block';
     return;
   }
-  
-  if (!isValidUrl(coverUrl) || !isValidUrl(videoUrl)) {
-    alert('Будь ласка, введіть коректні URL для обкладинки та відео');
-    return;
-  }
-  
-  const newAnime = {
-    title,
-    episodes,
-    cover: coverUrl,
-    videoUrl,
-    rating: 0
-  };
-  
-  const status = document.getElementById('animeStatus').value;
-  const editMode = addAnimeForm.dataset.editMode === 'true';
-  const oldStatus = addAnimeForm.dataset.editStatus;
-  const index = parseInt(addAnimeForm.dataset.editIndex);
-  
-  try {
-    await addOrEditAnime(newAnime, status, editMode, oldStatus, index);
-    loadAnimeList(status);
-    addAnimeForm.reset();
-    delete addAnimeForm.dataset.editMode;
-    delete addAnimeForm.dataset.editStatus;
-    delete addAnimeForm.dataset.editIndex;
-    modal.classList.remove('active');
-  } catch (error) {
-    console.error('Помилка при збереженні аніме:', error);
-    alert('Сталася помилка при збереженні. Спробуйте пізніше.');
-  }
-});
 
-// --- ОНОВИТИ рейтинг ---
-
-// --- ОНОВИТИ пошук ---
-function displaySearchResults(results) {
-  searchResults.innerHTML = '';
-  
-  if (results.length === 0) {
-    searchResults.innerHTML = '<div class="search-result-item">Нічого не знайдено</div>';
-    searchResults.classList.add('active');
-    return;
-  }
-  
-  results.forEach(anime => {
-    const resultItem = document.createElement('div');
-    resultItem.className = 'search-result-item';
-    resultItem.innerHTML = `
-      <img src="${anime.cover}" alt="${anime.title}">
-      <div>
-        <div>${anime.title}</div>
-        <small>${anime.episodes}</small>
-      </div>
-    `;
-    
-    resultItem.addEventListener('click', async () => {
-      let found = false;
-      await loadAllData();
-      ['watching', 'completed', 'plan'].forEach(status => {
-        const index = animeManager.animeData[status].findIndex(a => a.title === anime.title);
-        if (index !== -1) {
-          document.querySelector(`[data-tab="${status}"]`).click();
-          setTimeout(() => {
-            const cards = document.querySelectorAll('.anime-card');
-            if (cards[index]) {
-              cards[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
-              cards[index].style.transform = 'scale(1.05)';
-              cards[index].style.boxShadow = '0 0 20px var(--accent-color)';
-              setTimeout(() => {
-                cards[index].style.transform = '';
-                cards[index].style.boxShadow = '';
-              }, 2000);
-            }
-          }, 100);
-          found = true;
-        }
-      });
-      if (!found) {
-        alert('Це аніме ще не додано до вашого списку');
-      }
-      searchResults.classList.remove('active');
-      searchInput.value = '';
-    });
-    
-    searchResults.appendChild(resultItem);
-  });
-  
-  searchResults.classList.add('active');
-}
-
-// --- ОНОВИТИ allAnime для пошуку ---
-async function getAllAnime() {
-  await animeManager.loadAllData();
-  return [
-    ...animeManager.animeData.watching,
-    ...animeManager.animeData.completed,
-    ...animeManager.animeData.plan,
-    ...Object.values(newReleasesData).flat(),
-    {
-      title: "One Piece",
-      episodes: "1000+ епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-      rating: 0,
-      videoUrl: "https://example.com/watch/one-piece"
-    },
-    {
-      title: "Naruto Shippuden",
-      episodes: "500 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-      rating: 0,
-      videoUrl: "https://example.com/watch/naruto"
-    },
-    {
-      title: "My Hero Academia",
-      episodes: "113 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
-      rating: 0,
-      videoUrl: "https://example.com/watch/my-hero-academia"
-    }
-  ];
-}
-
-// --- Utility functions for form state ---
-function setFormLoading(form, isLoading) {
-  const submitBtn = form.querySelector('button[type="submit"]');
-  const inputs = form.querySelectorAll('input');
-  if (isLoading) {
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Зачекайте...';
-    submitBtn.disabled = true;
-    inputs.forEach(input => input.disabled = true);
+  const success = await loginUser(username, password);
+  if (success) {
+    loginMessage.textContent = `Ласкаво просимо, ${username}!`;
+    loginMessage.classList.remove('error');
+    loginMessage.classList.add('success');
+    loginMessage.style.display = 'block';
+    setTimeout(() => {
+      authModal.classList.remove('active');
+      updateProfileSection(); // Update profile section after successful login
+    }, 1500);
   } else {
-    submitBtn.innerHTML = form.id === 'loginForm' ? 'Увійти' : 'Зареєструватися';
-    submitBtn.disabled = false;
-    inputs.forEach(input => input.disabled = false);
+    loginMessage.textContent = 'Невірне ім\'я користувача або пароль.';
+    loginMessage.classList.remove('success');
+    loginMessage.classList.add('error');
+    loginMessage.style.display = 'block';
   }
-}
-
-// Ініціалізація форм авторизації при завантаженні сторінки
-document.addEventListener('DOMContentLoaded', () => {
-  // Форми
-  const registerForm = document.getElementById('registerForm');
-  const loginForm = document.getElementById('loginForm');
-  const authModal = document.getElementById('authModal');
-  const authTabButtons = document.querySelectorAll('.auth-tab-btn');
-  const closeAuthModalButton = document.querySelector('.close-auth-modal');
-
-  // Перемикання вкладок
-  authTabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      activateAuthTab(button.dataset.authTab);
-    });
-  });
-
-  // Закриття модального вікна
-  if (closeAuthModalButton) {
-    closeAuthModalButton.addEventListener('click', () => {
-      authModal.classList.remove('active');
-    });
-  }
-
-  // Закриття при кліку поза модальним вікном
-  window.addEventListener('click', (e) => {
-    if (e.target === authModal) {
-      authModal.classList.remove('active');
-    }
-  });
-
-  // Обробка форми реєстрації
-  registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    setFormLoading(registerForm, true);
-    
-    const username = document.getElementById('registerUsername').value;
-    const password = document.getElementById('registerPassword').value;    if (!username || !password) {
-      alert('Будь ласка, заповніть всі поля');
-      setFormLoading(registerForm, false);
-      return;
-    }
-    
-    if (password.length < 6) {
-      alert('Пароль повинен містити не менше 6 символів');
-      setFormLoading(registerForm, false);
-      return;
-    }
-    
-    if (!/^[a-zA-Z0-9]+$/.test(username)) {
-      alert('Ім\'я користувача може містити тільки літери та цифри');
-      setFormLoading(registerForm, false);
-      return;
-    }
-
-    try {
-      const success = await registerUser(username, password);
-      if (success) {
-        alert('Реєстрація успішна! Тепер ви можете увійти.');
-        activateAuthTab('login');
-        registerForm.reset();
-      } else {
-        alert('Користувач з таким ім\'ям вже існує!');
-      }
-    } catch (error) {
-      console.error('Помилка реєстрації:', error);
-      alert('Сталася помилка під час реєстрації. Спробуйте пізніше.');
-    } finally {
-      setFormLoading(registerForm, false);
-    }
-  });
-
-  // Обробка форми входу
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    setFormLoading(loginForm, true);
-
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-
-    if (!username || !password) {
-      alert('Будь ласка, заповніть всі поля');
-      setFormLoading(loginForm, false);
-      return;
-    }
-
-    try {
-      const success = await loginUser(username, password);
-      if (success) {
-        alert('Вхід успішний!');
-        authModal.classList.remove('active');
-        document.querySelector('.menu-item[data-section="profile"]').click();
-        loginForm.reset();
-      } else {
-        alert('Невірне ім\'я користувача або пароль!');
-      }
-    } catch (error) {
-      console.error('Помилка входу:', error);
-      alert('Сталася помилка під час входу. Спробуйте пізніше.');
-    } finally {
-      setFormLoading(loginForm, false);
-    }
-  });
 });
 
+registerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = getById('registerUsername').value.trim();
+  const password = getById('registerPassword').value.trim();
+
+  registerMessage.style.display = 'none'; // Hide previous messages
+
+  if (!username || !password) {
+    registerMessage.textContent = 'Будь ласка, введіть ім\'я користувача та пароль.';
+    registerMessage.classList.remove('success');
+    registerMessage.classList.add('error');
+    registerMessage.style.display = 'block';
+    return;
+  }
+
+  const success = await registerUser(username, password);
+  if (success) {
+    registerMessage.textContent = 'Реєстрація пройшла успішно! Тепер ви можете увійти.';
+    registerMessage.classList.remove('error');
+    registerMessage.classList.add('success');
+    registerMessage.style.display = 'block';
+    registerForm.reset();
+    setTimeout(() => {
+      activateAuthTab('login'); // Switch to login tab after successful registration
+    }, 1500);
+  } else {
+    registerMessage.textContent = 'Користувач з таким ім\'ям вже існує.';
+    registerMessage.classList.remove('success');
+    registerMessage.classList.add('error');
+    registerMessage.style.display = 'block';
+  }
+});

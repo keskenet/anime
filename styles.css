@@ -625,7 +625,7 @@ body {
 .stat-item {
   text-align: center;
   padding: 1.5rem;
-  background: var(--background);
+  background: var(--background); /* This might be wrong, should be var(--background-color) or another defined var */
   border-radius: 10px;
   transition: transform 0.3s ease;
 }
@@ -656,24 +656,24 @@ body {
   .menu {
     gap: 15px;
   }
-  
+
   .menu-item {
     min-width: auto;
     padding: 0 12px;
   }
-  
+
   .menu-text {
     font-size: 0.9rem;
   }
-  
+
   .search-input {
     width: 200px;
   }
-  
+
   .search-input:focus {
     width: 240px;
   }
-  
+
   .anime-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
@@ -684,49 +684,105 @@ body {
     padding: 0 15px;
     height: 70px;
   }
-  
+
   .menu {
     gap: 10px;
   }
-  
+
   .menu-text {
     display: none;
   }
-  
+
   .menu-item {
     padding: 0;
     width: 50px;
     justify-content: center;
   }
-  
+
   .menu-icon {
     margin: 0;
   }
-  
+
   .search-input {
     width: 150px;
     padding: 8px 35px 8px 15px;
   }
-  
+
   .search-input:focus {
     width: 180px;
   }
-  
+
   .list-tabs {
     flex-wrap: wrap;
   }
-  
+
   .list-header {
     flex-direction: column;
     gap: 15px;
     align-items: stretch;
   }
-  
+
   .add-anime-btn {
     justify-content: center;
   }
-  
+
   .season-selector {
     justify-content: center;
   }
+}
+
+/* Додаткові стилі для полів форми, що покращують вигляд */
+
+/* Стилі для поля input[type="date"] */
+.form-group input[type="date"] {
+    /* Наслідуємо основні стилі input */
+    -webkit-appearance: none; /* Для Chrome/Safari */
+    -moz-appearance: none; /* Для Firefox */
+    appearance: none; /* Загальне скидання стилів браузера */
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 1rem; /* Щоб шрифт був помітним */
+    cursor: pointer; /* Показати, що це інтерактивний елемент */
+}
+
+/* Прибираємо стандартні іконки календаря в деяких браузерах, якщо потрібно */
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1); /* Робить іконку білою */
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.form-group input[type="date"]::-webkit-inner-spin-button,
+.form-group input[type="date"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Додаткові стилі для плейсхолдерів, щоб вони відповідали темі */
+.form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Стилі для <select> опцій, якщо потрібно їх змінити */
+.form-group select {
+    /* Додаємо стилі для покращення вигляду випадаючого списку */
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%23ffffff" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); /* кастомна стрілка */
+    background-repeat: no-repeat;
+    background-position: right 10px top 50%;
+    background-size: 18px;
+    padding-right: 30px; /* Місце для стрілки */
+    -webkit-appearance: none; /* Скидаємо стандартний вигляд */
+    -moz-appearance: none;
+    appearance: none;
+}
+
+/* Стилі для опцій в select (можуть мати обмежену підтримку) */
+.form-group select option {
+    background-color: var(--card-bg); /* Темний фон для опцій */
+    
+    padding: 10px;
 }
