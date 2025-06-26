@@ -4,14 +4,14 @@ const defaultAnimeData = {
     {
       title: "Attack on Titan: Final Season",
       episodes: "Епізод 12 з 16",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://m.media-amazon.com/images/S/pv-target-images/abce4f3146841f9aa66e9963531ab38e64108ecaa79b93e5a2781c89c59ebaac.jpg",
       rating: 5,
       videoUrl: "https://example.com/watch/attack-on-titan"
     },
-    {
+    { 
       title: "Demon Slayer: Entertainment District Arc",
       episodes: "Епізод 8 з 11",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://www.animenewsnetwork.com/images/encyc/A24043-3208319059.1631044735.jpg",
       rating: 4,
       videoUrl: "https://example.com/watch/demon-slayer"
     }
@@ -20,7 +20,7 @@ const defaultAnimeData = {
     {
       title: "Death Note",
       episodes: "37 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://m.media-amazon.com/images/M/MV5BYTgyZDhmMTEtZDFhNi00MTc4LTg3NjUtYWJlNGE5Mzk2NzMxXkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg",
       rating: 5,
       videoUrl: "https://example.com/watch/death-note"
     }
@@ -29,7 +29,7 @@ const defaultAnimeData = {
     {
       title: "Fullmetal Alchemist: Brotherhood",
       episodes: "64 епізоди",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://images2.medimops.eu/product/ed3363/M0B00KGECY5E-source.jpg",
       rating: 0,
       videoUrl: "https://example.com/watch/fullmetal-alchemist",
       plannedDate: "2025-07-15"
@@ -43,14 +43,14 @@ const newReleasesData = {
     {
       title: "Solo Leveling",
       episodes: "12 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://m.media-amazon.com/images/I/81OYRZEQG7L._UF1000,1000_QL80_.jpg",
       rating: 4.8,
       videoUrl: "https://example.com/watch/solo-leveling"
     },
     {
       title: "Classroom of the Elite Season 3",
       episodes: "13 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://m.media-amazon.com/images/M/MV5BMDg3MGVhNWUtYTQ2NS00ZDdiLTg5MTMtZmM5MjUzN2IxN2I4XkEyXkFqcGc@._V1_FMjpg_UX1000_.jpg",
       rating: 4.5,
       videoUrl: "https://example.com/watch/classroom-elite-s3"
     }
@@ -59,7 +59,7 @@ const newReleasesData = {
     {
       title: "Spy x Family Season 2",
       episodes: "12 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://a.storyblok.com/f/178900/650x939/03e8159bf1/sxf_kv2.jpeg/m/filters:quality(95)format(webp)",
       rating: 4.9,
       videoUrl: "https://example.com/watch/spy-family-s2"
     }
@@ -68,7 +68,7 @@ const newReleasesData = {
     {
       title: "One Punch Man Season 3",
       episodes: "12 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://assets-prd.ignimgs.com/2022/08/18/one-punch-man-poster-1660838177219.jpeg",
       rating: 4.7,
       videoUrl: "https://example.com/watch/one-punch-man-s3"
     }
@@ -77,7 +77,7 @@ const newReleasesData = {
     {
       title: "Chainsaw Man Part 2",
       episodes: "12 епізодів",
-      cover: "https://images.pexels.com/photos/14940128/pexels-photo-14940128.jpeg",
+      cover: "https://preview.redd.it/do-you-think-that-chainsaw-man-part-2-will-wrapp-up-in-2024-v0-bc9ay935dkpc1.png?auto=webp&s=e94c1751c81dbdcfa12a10f7e61e1b7880682abb",
       rating: 4.6,
       videoUrl: "https://example.com/watch/chainsaw-man-p2"
     }
